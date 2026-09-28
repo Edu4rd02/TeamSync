@@ -19,11 +19,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -39,6 +41,14 @@ fun LoginScreen(
     viewModel: LoginViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    // Hand the ViewModel the current Activity, which the account picker is launched from.
+    // Re-attached on every recreation (e.g. rotation) and released when this Activity goes away.
+    DisposableEffect(context) {
+        viewModel.attachActivity(context)
+        onDispose { viewModel.detachActivity(context) }
+    }
 
     LaunchedEffect(uiState.isSignedIn) {
         if (uiState.isSignedIn) onSignedIn()
@@ -46,7 +56,7 @@ fun LoginScreen(
 
     LoginContent(
         uiState = uiState,
-        onGoogleSignInClick = viewModel::onGoogleSignInClick
+        onGoogleSignInClick = viewModel::signInWithGoogle
     )
 }
 

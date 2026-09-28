@@ -85,7 +85,11 @@ fun MyGroupsContent(
             }
         }
 
-        TeamSyncBottomNav(selectedTab = BottomNavTab.GROUPS, onTabClick = onTabClick)
+        TeamSyncBottomNav(
+            selectedTab = BottomNavTab.GROUPS,
+            onTabClick = onTabClick,
+            accountPhotoUrl = uiState.photoUrl
+        )
     }
 }
 
