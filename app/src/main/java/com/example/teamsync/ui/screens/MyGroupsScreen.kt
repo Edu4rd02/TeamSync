@@ -26,13 +26,15 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.teamsync.data.model.Group
-import com.example.teamsync.data.model.GroupRole
 import com.example.teamsync.ui.components.BottomNavTab
 import com.example.teamsync.ui.components.TeamSyncBottomNav
 import com.example.teamsync.ui.components.TeamSyncHeader
 import com.example.teamsync.ui.MyGroupsUiState
 import com.example.teamsync.ui.MyGroupsViewModel
 import com.example.teamsync.ui.theme.TeamSyncTheme
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.LocalTime
 
 @Composable
 fun MyGroupsScreen(
@@ -80,7 +82,11 @@ fun MyGroupsContent(
                     JoinWithCodeButton(onClick = onJoinWithCodeClick)
                 }
                 items(uiState.groups, key = { it.id }) { group ->
-                    GroupCard(group = group, onClick = { onGroupClick(group) })
+                    GroupCard(
+                        group = group,
+                        isAdmin = group.isOwnedBy(uiState.currentUserId),
+                        onClick = { onGroupClick(group) }
+                    )
                 }
             }
         }
@@ -118,6 +124,7 @@ private fun JoinWithCodeButton(onClick: () -> Unit) {
 @Composable
 private fun GroupCard(
     group: Group,
+    isAdmin: Boolean,
     onClick: () -> Unit
 ) {
     Surface(
@@ -141,13 +148,10 @@ private fun GroupCard(
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f)
                 )
-                RoleBadge(role = group.role)
+                RoleBadge(isAdmin = isAdmin)
             }
             Text(
-                text = buildString {
-                    append("${group.memberCount} members")
-                    group.nextEvent?.let { append(" · Next: $it") }
-                },
+                text = "${group.memberIds.size} members",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -156,7 +160,7 @@ private fun GroupCard(
 }
 
 @Composable
-private fun RoleBadge(role: GroupRole) {
+private fun RoleBadge(isAdmin: Boolean) {
     Box(
         modifier = Modifier
             .background(
@@ -166,10 +170,7 @@ private fun RoleBadge(role: GroupRole) {
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         Text(
-            text = when (role) {
-                GroupRole.ADMIN -> "Admin"
-                GroupRole.MEMBER -> "Member"
-            },
+            text = if (isAdmin) "Admin" else "Member",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onPrimaryContainer
         )
@@ -183,11 +184,21 @@ private fun MyGroupsContentPreview() {
         MyGroupsContent(
             uiState = MyGroupsUiState(
                 isLoading = false,
-                groups = listOf(
-                    Group("1", "Capstone Team", GroupRole.MEMBER, 5, "Thu Sep 17, 4:00 PM"),
-                    Group("2", "Design Club", GroupRole.MEMBER, 5, "Thu Sep 17, 4:00 PM"),
-                    Group("3", "Study Group", GroupRole.MEMBER, 5, "Thu Sep 17, 4:00 PM")
-                )
+                groups = listOf("Capstone Team", "Design Club", "Study Group").mapIndexed { i, name ->
+                    Group(
+                        id = "$i",
+                        name = name,
+                        memberIds = listOf("me", "a", "b", "c", "d"),
+                        ownerId = if (i == 0) "me" else "a",
+                        invitationCode = "ABC123",
+                        workDays = DayOfWeek.entries.take(5),
+                        workStart = LocalTime.of(7, 0),
+                        workEnd = LocalTime.of(17, 0),
+                        createdAt = Instant.EPOCH,
+                        updatedAt = Instant.EPOCH
+                    )
+                },
+                currentUserId = "me"
             ),
             onGroupClick = {},
             onJoinWithCodeClick = {},

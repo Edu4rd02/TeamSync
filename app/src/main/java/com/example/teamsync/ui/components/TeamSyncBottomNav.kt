@@ -33,7 +33,6 @@ enum class BottomNavTab(val label: String) {
     ACCOUNT("Account")
 }
 
-/** Figma component "Bottom nav". */
 @Composable
 fun TeamSyncBottomNav(
     selectedTab: BottomNavTab,

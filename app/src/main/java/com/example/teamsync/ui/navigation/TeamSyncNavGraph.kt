@@ -5,6 +5,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import com.example.teamsync.ui.components.BottomNavTab
+import com.example.teamsync.ui.screens.CreateGroupScreen
 import com.example.teamsync.ui.screens.MyGroupsScreen
 import com.example.teamsync.ui.screens.LoginScreen
 import com.example.teamsync.ui.screens.ProfileScreen
@@ -17,14 +18,12 @@ fun TeamSyncNavGraph(
         val route = when (tab) {
             BottomNavTab.GROUPS -> TeamSyncRoutes.GROUPS
             BottomNavTab.ACCOUNT -> TeamSyncRoutes.PROFILE
-            BottomNavTab.CREATE -> null // TODO: Create screen
+            BottomNavTab.CREATE -> TeamSyncRoutes.CREATE_GROUP
         }
-        route?.let {
-            navController.navigate(it) {
-                // Keep Groups as the only entry below the current tab.
-                popUpTo(TeamSyncRoutes.GROUPS)
-                launchSingleTop = true
-            }
+        navController.navigate(route) {
+            // Keep Groups as the only entry below the current tab.
+            popUpTo(TeamSyncRoutes.GROUPS)
+            launchSingleTop = true
         }
     }
 
@@ -45,6 +44,15 @@ fun TeamSyncNavGraph(
             MyGroupsScreen(
                 onGroupClick = { /* TODO: navigate to group detail */ },
                 onJoinWithCodeClick = { /* TODO: join with code */ },
+                onTabClick = onTabClick
+            )
+        }
+        composable(TeamSyncRoutes.CREATE_GROUP){
+            CreateGroupScreen(
+                onGroupCreated = {
+                    // TODO: navigate to the new group's detail once that screen exists.
+                    navController.popBackStack(TeamSyncRoutes.GROUPS, inclusive = false)
+                },
                 onTabClick = onTabClick
             )
         }

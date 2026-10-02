@@ -7,6 +7,7 @@ val Blue600 = Color(0xFF1F4FD8)
 val Blue50 = Color(0xFFE5ECFD)
 val Slate900 = Color(0xFF0F172A)
 val Slate500 = Color(0xFF64748B)
+val Gray400 = Color(0xFF9CA3AF) // Input placeholder text
 val Slate300 = Color(0xFFCCD5E0)
 val Slate200 = Color(0xFFE2E8F0)
 val Slate50 = Color(0xFFF4F7FB)

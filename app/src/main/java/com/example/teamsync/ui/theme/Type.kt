@@ -37,9 +37,11 @@ val Typography = Typography(
     headlineLarge = inter(30, 42, FontWeight.Bold),
     titleLarge = inter(22, 31, FontWeight.Bold),
     titleMedium = inter(17, 24, FontWeight.SemiBold),
+    titleSmall = inter(14, 20, FontWeight.Medium),
     labelLarge = inter(16, 22, FontWeight.SemiBold),
     labelMedium = inter(15, 21, FontWeight.SemiBold),
     labelSmall = inter(11, 15, FontWeight.SemiBold),
     bodyLarge = inter(15, 21, FontWeight.Normal),
-    bodyMedium = inter(13, 18, FontWeight.Normal)
+    bodyMedium = inter(13, 18, FontWeight.Normal),
+    bodySmall = inter(12, 17, FontWeight.Normal)
 )

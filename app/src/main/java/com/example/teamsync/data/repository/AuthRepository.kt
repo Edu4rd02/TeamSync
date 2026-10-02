@@ -29,6 +29,9 @@ class AuthRepository(
     val isSignedIn: Boolean
         get() = auth.currentUser != null
 
+    val userId: String?
+        get() = auth.currentUser?.uid
+
     val photoUrl: String?
         get() = auth.currentUser?.photoUrl?.toString()
 

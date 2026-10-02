@@ -1,6 +1,7 @@
 package com.example.teamsync.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,11 +27,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.teamsync.R
 import com.example.teamsync.ui.LoginUiState
 import com.example.teamsync.ui.LoginViewModel
 import com.example.teamsync.ui.theme.TeamSyncTheme
@@ -148,6 +151,12 @@ private fun GoogleSignInButton(
                 CircularProgressIndicator(
                     modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp
+                )
+            } else {
+                Image(
+                    painter = painterResource(R.drawable.ic_google),
+                    contentDescription = "Sign in with Google",
+                    modifier = Modifier.size(20.dp)
                 )
             }
             Text(
