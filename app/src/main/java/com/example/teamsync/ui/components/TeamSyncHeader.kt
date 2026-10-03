@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 
-/** Figma component "Header": 30dp leading slot + screen title. */
 @Composable
 fun TeamSyncHeader(
     title: String,
@@ -29,15 +28,8 @@ fun TeamSyncHeader(
             .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
             .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(30.dp)
-                .clip(RoundedCornerShape(9.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-        )
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge,

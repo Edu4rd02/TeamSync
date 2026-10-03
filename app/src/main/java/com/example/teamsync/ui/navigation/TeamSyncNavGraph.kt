@@ -43,14 +43,12 @@ fun TeamSyncNavGraph(
         composable(TeamSyncRoutes.GROUPS){
             MyGroupsScreen(
                 onGroupClick = { /* TODO: navigate to group detail */ },
-                onJoinWithCodeClick = { /* TODO: join with code */ },
                 onTabClick = onTabClick
             )
         }
         composable(TeamSyncRoutes.CREATE_GROUP){
             CreateGroupScreen(
                 onGroupCreated = {
-                    // TODO: navigate to the new group's detail once that screen exists.
                     navController.popBackStack(TeamSyncRoutes.GROUPS, inclusive = false)
                 },
                 onTabClick = onTabClick

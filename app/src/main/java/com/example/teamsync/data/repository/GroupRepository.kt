@@ -17,13 +17,13 @@ import kotlinx.coroutines.tasks.await
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalTime
+import java.util.concurrent.CancellationException
 
 class GroupRepository(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
     private val groups = firestore.collection(FireStoreConstants.GROUPS_COLLECTION)
 
-    /** Emits the groups [userId] belongs to, and re-emits whenever they change in Firestore. */
     fun getMyGroups(userId: String): Flow<List<Group>> = callbackFlow {
         val registration = groups
             .whereArrayContains(GroupFields.MEMBER_IDS, userId)
@@ -115,6 +115,46 @@ class GroupRepository(
         } catch (e: Exception) {
             Log.e(TAG, "Skipping malformed group $id", e)
             null
+        }
+    }
+
+    suspend fun joinGroup(
+        invitationCode: String,
+        userId: String,
+        displayName: String?,
+        photoUrl: String?
+    ): Result<Unit> {
+        return try {
+            val querySnapshot = groups
+                .whereEqualTo(GroupFields.INVITATION_CODE, invitationCode)
+                .limit(1)
+                .get()
+                .await()
+
+            // When a group is not found, no exception is thrown, so return failure manually
+            val groupDoc = querySnapshot.documents.firstOrNull()
+                ?: return Result.failure(NoSuchElementException("Group not found with code: $invitationCode"))
+
+            val member = mapOf(
+                MemberFields.ROLE to MemberRole.MEMBER.name,
+                MemberFields.DISPLAY_NAME to displayName,
+                MemberFields.PHOTO_URL to photoUrl,
+                MemberFields.JOINED_AT to FieldValue.serverTimestamp(),
+                MemberFields.LAST_SYNC_AT to null,
+                MemberFields.CALENDAR_STATUS to CalendarStatus.NOT_CONNECTED.name
+            )
+
+            firestore.runTransaction { transaction ->
+                transaction.update(groupDoc.reference, GroupFields.MEMBER_IDS, FieldValue.arrayUnion(userId))
+                transaction.set(groupDoc.reference.collection(FireStoreConstants.MEMBERS_COLLECTION).document(userId), member)
+                null
+            }.await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Error joining group", e)
+            Result.failure(e)
         }
     }
 

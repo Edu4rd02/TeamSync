@@ -10,15 +10,25 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -32,6 +42,7 @@ import com.example.teamsync.ui.components.TeamSyncHeader
 import com.example.teamsync.ui.MyGroupsUiState
 import com.example.teamsync.ui.MyGroupsViewModel
 import com.example.teamsync.ui.theme.TeamSyncTheme
+import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalTime
@@ -39,7 +50,6 @@ import java.time.LocalTime
 @Composable
 fun MyGroupsScreen(
     onGroupClick: (Group) -> Unit,
-    onJoinWithCodeClick: () -> Unit,
     onTabClick: (BottomNavTab) -> Unit,
     viewModel: MyGroupsViewModel = viewModel()
 ) {
@@ -48,7 +58,8 @@ fun MyGroupsScreen(
     MyGroupsContent(
         uiState = uiState,
         onGroupClick = onGroupClick,
-        onJoinWithCodeClick = onJoinWithCodeClick,
+        onJoinGroup = { viewModel.joinGroup(it) },
+        onJoinErrorDismissed = viewModel::onJoinErrorDismissed,
         onTabClick = onTabClick
     )
 }
@@ -57,10 +68,75 @@ fun MyGroupsScreen(
 fun MyGroupsContent(
     uiState: MyGroupsUiState,
     onGroupClick: (Group) -> Unit,
-    onJoinWithCodeClick: () -> Unit,
+    onJoinGroup: suspend (String) -> Boolean,
+    onJoinErrorDismissed: () -> Unit,
     onTabClick: (BottomNavTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showJoinGroupDialog by remember { mutableStateOf(false) }
+    var joinCode by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+
+    if (showJoinGroupDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showJoinGroupDialog = false
+                onJoinErrorDismissed()
+            },
+            title = { Text(text = "Join Group") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Enter the group invitation code:")
+                    OutlinedTextField(
+                        value = joinCode,
+                        onValueChange = {
+                            joinCode = it
+                            if (uiState.joinError != null) onJoinErrorDismissed()
+                        },
+                        label = { Text("Invitation Code") },
+                        singleLine = true,
+                        isError = uiState.joinError != null,
+                        supportingText = uiState.joinError?.let { { Text(it) } },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = joinCode.isNotBlank() && !uiState.isJoining,
+                    onClick = {
+                        scope.launch {
+                            if (onJoinGroup(joinCode)) {
+                                showJoinGroupDialog = false
+                                joinCode = ""
+                            }
+                        }
+                    }
+                ) {
+                    if (uiState.isJoining) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("Join")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showJoinGroupDialog = false
+                    onJoinErrorDismissed()
+                }) {
+                    Text(
+                        text = "Cancel",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -79,7 +155,7 @@ fun MyGroupsContent(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item {
-                    JoinWithCodeButton(onClick = onJoinWithCodeClick)
+                    JoinWithCodeButton(onClick = { showJoinGroupDialog = true })
                 }
                 items(uiState.groups, key = { it.id }) { group ->
                     GroupCard(
@@ -201,7 +277,8 @@ private fun MyGroupsContentPreview() {
                 currentUserId = "me"
             ),
             onGroupClick = {},
-            onJoinWithCodeClick = {},
+            onJoinGroup = { true },
+            onJoinErrorDismissed = {},
             onTabClick = {}
         )
     }
