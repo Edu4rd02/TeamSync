@@ -3,9 +3,12 @@ package com.example.teamsync.ui.navigation
 import androidx.compose.runtime.Composable
 import androidx.navigation.compose.composable
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
+import androidx.navigation.navArgument
 import com.example.teamsync.ui.components.BottomNavTab
 import com.example.teamsync.ui.screens.CreateGroupScreen
+import com.example.teamsync.ui.screens.GroupDetailScreen
 import com.example.teamsync.ui.screens.MyGroupsScreen
 import com.example.teamsync.ui.screens.LoginScreen
 import com.example.teamsync.ui.screens.ProfileScreen
@@ -42,10 +45,25 @@ fun TeamSyncNavGraph(
         }
         composable(TeamSyncRoutes.GROUPS){
             MyGroupsScreen(
-                onGroupClick = { /* TODO: navigate to group detail */ },
+                onGroupClick = { group ->
+                    navController.navigate(TeamSyncRoutes.groupDetail(group.id))
+                },
                 onTabClick = onTabClick
             )
         }
+
+        composable(
+            route = TeamSyncRoutes.GROUP_DETAIL,
+            arguments = listOf(navArgument("groupId") {type = NavType.StringType})
+        ){
+            GroupDetailScreen(
+                onBack = {
+                    navController.popBackStack()
+                },
+                onTabClick = onTabClick
+            )
+        }
+
         composable(TeamSyncRoutes.CREATE_GROUP){
             CreateGroupScreen(
                 onGroupCreated = {

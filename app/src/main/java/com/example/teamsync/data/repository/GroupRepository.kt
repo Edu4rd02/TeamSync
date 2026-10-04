@@ -42,6 +42,19 @@ class GroupRepository(
         awaitClose { registration.remove() }
     }
 
+    fun getGroup(groupId: String): Flow<Group?> = callbackFlow {
+        val registration = groups.document(groupId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Error listening to group $groupId", error)
+                    close(error)
+                    return@addSnapshotListener
+                }
+                trySend(snapshot?.takeIf { it.exists() }?.toGroup())
+            }
+        awaitClose { registration.remove() }
+    }
+
     suspend fun createGroup(
         name: String,
         description: String?,
