@@ -24,5 +24,19 @@ internal object FireStoreConstants {
         const val LAST_SYNC_AT = "lastSyncAt"
         const val CALENDAR_STATUS = "calendarStatus"
     }
+
+    const val BUSYBLOCKS_COLLECTION = "busyBlocks"
+    object BusyBlocksFields {
+        const val USER_ID = "uid"
+        const val BLOCK = "blocks"
+        const val UPDATED_AT = "updatedAt"
+        const val WINDOW_START = "windowStart"
+        const val WINDOW_END = "windowEnd"
+    }
+
+    object TimeSlotFields {
+        const val START = "start"
+        const val END = "end"
+    }
 }
 

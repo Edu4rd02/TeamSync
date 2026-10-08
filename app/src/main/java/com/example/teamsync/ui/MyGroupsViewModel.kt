@@ -1,7 +1,10 @@
 package com.example.teamsync.ui
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.teamsync.data.CalendarDataSource
+import com.example.teamsync.data.CalendarSync
 import com.example.teamsync.data.model.Group
 import com.example.teamsync.data.repository.AuthRepository
 import com.example.teamsync.data.repository.GroupRepository
@@ -18,13 +21,21 @@ data class MyGroupsUiState(
     val currentUserId: String? = null,
     val photoUrl: String? = null,
     val isJoining: Boolean = false,
-    val joinError: String? = null
+    val joinError: String? = null,
+    val joinSuccess: Boolean = false
 )
 
-class MyGroupsViewModel(
+// AndroidViewModel gives access to the application Context the calendar read needs,
+// JvmOverloads allow to use default parameter values in constructors.
+class MyGroupsViewModel @JvmOverloads constructor(
+    application: Application,
     private val groupRepository: GroupRepository = GroupRepository(),
-    private val authRepository: AuthRepository = AuthRepository()
-) : ViewModel() {
+    private val authRepository: AuthRepository = AuthRepository(),
+    private val calendarSync: CalendarSync = CalendarSync(
+        groupRepository,
+        CalendarDataSource(application)
+    )
+) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(MyGroupsUiState(photoUrl = authRepository.photoUrl))
     val uiState: StateFlow<MyGroupsUiState> = _uiState.asStateFlow()
@@ -52,25 +63,35 @@ class MyGroupsViewModel(
 
     fun onJoinErrorDismissed() = _uiState.update { it.copy(joinError = null) }
 
-    suspend fun joinGroup(joinCode: String): Boolean {
-        val userId = authRepository.userId ?: return false
+    fun onJoinSuccess() = _uiState.update{ it.copy(joinSuccess = false) }
+
+    fun joinGroup(joinCode: String, syncCalendar: Boolean) {
+        val userId = authRepository.userId ?: return
         val code = joinCode.uppercase().trim()
         if (code.length != 6) {
             _uiState.update { it.copy(joinError = "Enter a valid group code") }
-            return false
+            return
         }
         _uiState.update { it.copy(isJoining = true, joinError = null) }
-        val result = groupRepository.joinGroup(
-            invitationCode = code,
-            userId = userId,
-            displayName = authRepository.displayName,
-            photoUrl = authRepository.photoUrl
-        )
-        val error = result.exceptionOrNull()?.let { e ->
-            if (e is NoSuchElementException) "There are not groups with this code"
-            else "Something goes wrong, try later."
+        viewModelScope.launch {
+            val result = groupRepository.joinGroup(
+                invitationCode = code,
+                userId = userId,
+                displayName = authRepository.displayName,
+                photoUrl = authRepository.photoUrl,
+                calendarPermission = syncCalendar
+            )
+            val error = result.exceptionOrNull()?.let { e ->
+                if (e is NoSuchElementException) "There are not groups with this code"
+                else "Something goes wrong, try later."
+            }
+            _uiState.update { it.copy(isJoining = false, joinError = error, joinSuccess = error == null) }
+
+            if (syncCalendar) {
+                result.getOrNull()?.let { groupId ->
+                    calendarSync.sync(groupId, userId, throttle = false)
+                }
+            }
         }
-        _uiState.update { it.copy(isJoining = false, joinError = error) }
-        return error == null
     }
 }

@@ -2,11 +2,15 @@ package com.example.teamsync.data.repository
 
 import android.util.Log
 import com.example.teamsync.data.FireStoreConstants
+import com.example.teamsync.data.FireStoreConstants.BusyBlocksFields
 import com.example.teamsync.data.FireStoreConstants.GroupFields
+import com.example.teamsync.data.FireStoreConstants.TimeSlotFields
 import com.example.teamsync.data.FireStoreConstants.MemberFields
 import com.example.teamsync.data.model.CalendarStatus
 import com.example.teamsync.data.model.Group
+import com.example.teamsync.data.model.Member
 import com.example.teamsync.data.model.MemberRole
+import com.example.teamsync.data.model.TimeSlot
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -23,6 +27,8 @@ class GroupRepository(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
     private val groups = firestore.collection(FireStoreConstants.GROUPS_COLLECTION)
+    private fun busyBlocksOf(groupId: String) =
+        groups.document(groupId).collection(FireStoreConstants.BUSYBLOCKS_COLLECTION)
 
     fun getMyGroups(userId: String): Flow<List<Group>> = callbackFlow {
         val registration = groups
@@ -131,12 +137,30 @@ class GroupRepository(
         }
     }
 
+    private fun DocumentSnapshot.toMember(): Member? {
+        return try{
+            Member(
+                uid = id,
+                role = MemberRole.valueOf(getString(MemberFields.ROLE) ?: return null),
+                displayName = getString(MemberFields.DISPLAY_NAME),
+                photoUrl = getString(MemberFields.PHOTO_URL),
+                joinedAt = instantOf(MemberFields.JOINED_AT),
+                lastSyncAt = getTimestamp(MemberFields.LAST_SYNC_AT)?.let { instantOf(MemberFields.LAST_SYNC_AT) },
+                calendarStatus = getString(MemberFields.CALENDAR_STATUS)?.let { CalendarStatus.valueOf(it) } ?: CalendarStatus.NOT_CONNECTED
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Skipping malformed member $id", e)
+            null
+        }
+    }
+
     suspend fun joinGroup(
         invitationCode: String,
         userId: String,
         displayName: String?,
-        photoUrl: String?
-    ): Result<Unit> {
+        photoUrl: String?,
+        calendarPermission: Boolean
+    ): Result<String> {
         return try {
             val querySnapshot = groups
                 .whereEqualTo(GroupFields.INVITATION_CODE, invitationCode)
@@ -154,7 +178,10 @@ class GroupRepository(
                 MemberFields.PHOTO_URL to photoUrl,
                 MemberFields.JOINED_AT to FieldValue.serverTimestamp(),
                 MemberFields.LAST_SYNC_AT to null,
-                MemberFields.CALENDAR_STATUS to CalendarStatus.NOT_CONNECTED.name
+                // Becomes CONNECTED once the first sync succeeds
+                MemberFields.CALENDAR_STATUS to
+                    if (calendarPermission) CalendarStatus.NOT_CONNECTED.name
+                    else CalendarStatus.PERMISSION_DENIED.name
             )
 
             firestore.runTransaction { transaction ->
@@ -162,13 +189,74 @@ class GroupRepository(
                 transaction.set(groupDoc.reference.collection(FireStoreConstants.MEMBERS_COLLECTION).document(userId), member)
                 null
             }.await()
-            Result.success(Unit)
+            Result.success(groupDoc.id)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Error joining group", e)
             Result.failure(e)
         }
+    }
+
+    // One-shot read, used by the calendar sync (getGroup is a live listener).
+    suspend fun getGroupOnce(groupId: String): Group? = try {
+        groups.document(groupId).get().await().takeIf { it.exists() }?.toGroup()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.e(TAG, "Error reading group $groupId", e)
+        null
+    }
+
+    suspend fun getMemberOnce(groupId: String, userId: String): Member? = try {
+        groups.document(groupId)
+            .collection(FireStoreConstants.MEMBERS_COLLECTION)
+            .document(userId)
+            .get()
+            .await()
+            .takeIf { it.exists() }
+            ?.toMember()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.e(TAG, "Error reading member $userId in group $groupId", e)
+        null
+    }
+
+    suspend fun syncUserCalendar(
+        userId: String,
+        groupId: String,
+        blocks: List<TimeSlot>,
+        windowStart: Long,
+        windowEnd: Long
+    ): Result<Unit> = try {
+        val blocksDoc = mapOf(
+            BusyBlocksFields.USER_ID to userId,
+            BusyBlocksFields.BLOCK to blocks.map {
+                mapOf(TimeSlotFields.START to it.start, TimeSlotFields.END to it.end)
+            },
+            BusyBlocksFields.UPDATED_AT to FieldValue.serverTimestamp(),
+            BusyBlocksFields.WINDOW_START to windowStart,
+            BusyBlocksFields.WINDOW_END to windowEnd
+        )
+        val memberRef = groups.document(groupId)
+            .collection(FireStoreConstants.MEMBERS_COLLECTION).document(userId)
+
+        // Both writes succeed or fail together
+        firestore.runBatch { batch ->
+            batch.set(busyBlocksOf(groupId).document(userId), blocksDoc) // set = replace whole doc
+            batch.update(
+                memberRef,
+                MemberFields.CALENDAR_STATUS, CalendarStatus.CONNECTED.name,
+                MemberFields.LAST_SYNC_AT, FieldValue.serverTimestamp()
+            )
+        }.await()
+        Result.success(Unit)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.e(TAG, "Error syncing calendar for $userId in $groupId", e)
+        Result.failure(e)
     }
 
     // A just-written serverTimestamp is null locally until the server confirms it, so estimate it.

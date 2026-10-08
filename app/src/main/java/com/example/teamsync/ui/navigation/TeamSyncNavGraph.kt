@@ -12,6 +12,7 @@ import com.example.teamsync.ui.screens.GroupDetailScreen
 import com.example.teamsync.ui.screens.MyGroupsScreen
 import com.example.teamsync.ui.screens.LoginScreen
 import com.example.teamsync.ui.screens.ProfileScreen
+import com.example.teamsync.ui.screens.admin.CreateEventScreen
 
 @Composable
 fun TeamSyncNavGraph(
@@ -57,6 +58,21 @@ fun TeamSyncNavGraph(
             arguments = listOf(navArgument("groupId") {type = NavType.StringType})
         ){
             GroupDetailScreen(
+                onBack = {
+                    navController.popBackStack()
+                },
+                onProposeEvent = { group ->
+                    navController.navigate(TeamSyncRoutes.createEvent(group.id))
+                },
+                onTabClick = onTabClick
+            )
+        }
+
+        composable(
+            route = TeamSyncRoutes.CREATE_EVENT,
+            arguments = listOf(navArgument("groupId") {type = NavType.StringType})
+        ){
+            CreateEventScreen(
                 onBack = {
                     navController.popBackStack()
                 },

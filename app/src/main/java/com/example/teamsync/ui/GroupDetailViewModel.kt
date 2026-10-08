@@ -3,6 +3,7 @@ package com.example.teamsync.ui
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.teamsync.data.CalendarSync
 import com.example.teamsync.data.model.Group
 import com.example.teamsync.data.repository.AuthRepository
 import com.example.teamsync.data.repository.GroupRepository
@@ -56,6 +57,7 @@ data class GroupDetailUiState(
 
 class GroupDetailViewModel(
     savedStateHandle: SavedStateHandle,
+    private val calendarSync: CalendarSync,
     private val groupRepository: GroupRepository = GroupRepository(),
     private val authRepository: AuthRepository = AuthRepository()
 ) : ViewModel() {
@@ -78,6 +80,11 @@ class GroupDetailViewModel(
                         )
                     }
                 }
+        }
+
+        // Refresh the busy blocks on entering; the function skips it if synced within the last 2 min
+        authRepository.userId?.let { userId ->
+            viewModelScope.launch { calendarSync.sync(groupId, userId) }
         }
     }
 

@@ -1,5 +1,11 @@
 package com.example.teamsync.ui.screens
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -14,23 +20,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -42,10 +47,18 @@ import com.example.teamsync.ui.components.TeamSyncHeader
 import com.example.teamsync.ui.MyGroupsUiState
 import com.example.teamsync.ui.MyGroupsViewModel
 import com.example.teamsync.ui.theme.TeamSyncTheme
-import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalTime
+
+private val CALENDAR_PERMISSIONS = arrayOf(
+    Manifest.permission.READ_CALENDAR,
+    Manifest.permission.WRITE_CALENDAR
+)
+
+private fun hasCalendarPermission(context: Context) = CALENDAR_PERMISSIONS.all {
+    ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+}
 
 @Composable
 fun MyGroupsScreen(
@@ -58,8 +71,9 @@ fun MyGroupsScreen(
     MyGroupsContent(
         uiState = uiState,
         onGroupClick = onGroupClick,
-        onJoinGroup = { viewModel.joinGroup(it) },
+        onJoinGroup = viewModel::joinGroup,
         onJoinErrorDismissed = viewModel::onJoinErrorDismissed,
+        onJoinSuccess = viewModel::onJoinSuccess,
         onTabClick = onTabClick
     )
 }
@@ -68,14 +82,31 @@ fun MyGroupsScreen(
 fun MyGroupsContent(
     uiState: MyGroupsUiState,
     onGroupClick: (Group) -> Unit,
-    onJoinGroup: suspend (String) -> Boolean,
+    onJoinGroup: (String, Boolean) -> Unit,
     onJoinErrorDismissed: () -> Unit,
+    onJoinSuccess: () -> Unit,
     onTabClick: (BottomNavTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showJoinGroupDialog by remember { mutableStateOf(false) }
     var joinCode by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    // Joins the group whether or not the calendar permission was granted
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val granted = CALENDAR_PERMISSIONS.all { results[it] == true }
+        onJoinGroup(joinCode, granted)
+    }
+
+    LaunchedEffect(uiState.joinSuccess) {
+        if (uiState.joinSuccess) {
+            showJoinGroupDialog = false
+            joinCode = ""
+            onJoinSuccess()
+        }
+    }
 
     if (showJoinGroupDialog) {
         AlertDialog(
@@ -105,12 +136,8 @@ fun MyGroupsContent(
                 TextButton(
                     enabled = joinCode.isNotBlank() && !uiState.isJoining,
                     onClick = {
-                        scope.launch {
-                            if (onJoinGroup(joinCode)) {
-                                showJoinGroupDialog = false
-                                joinCode = ""
-                            }
-                        }
+                        if (hasCalendarPermission(context)) onJoinGroup(joinCode, true)
+                        else permissionLauncher.launch(CALENDAR_PERMISSIONS)
                     }
                 ) {
                     if (uiState.isJoining) {
@@ -277,8 +304,9 @@ private fun MyGroupsContentPreview() {
                 currentUserId = "me"
             ),
             onGroupClick = {},
-            onJoinGroup = { true },
+            onJoinGroup = { _, _ -> },
             onJoinErrorDismissed = {},
+            onJoinSuccess = {},
             onTabClick = {}
         )
     }

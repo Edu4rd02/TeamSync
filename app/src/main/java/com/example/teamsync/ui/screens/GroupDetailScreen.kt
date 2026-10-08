@@ -35,6 +35,11 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
+import com.example.teamsync.data.CalendarDataSource
+import com.example.teamsync.data.CalendarSync
+import com.example.teamsync.data.model.Group
+import com.example.teamsync.data.repository.GroupRepository
 import com.example.teamsync.ui.FeedFilter
 import com.example.teamsync.ui.FeedItem
 import com.example.teamsync.ui.FeedItemType
@@ -53,12 +58,21 @@ private val AnnouncementContent = Color(0xFF8B5CF6)
 fun GroupDetailScreen(
     onBack: () -> Unit,
     onTabClick: (BottomNavTab) -> Unit,
-    onProposeEvent: () -> Unit = {},
+    onProposeEvent: (Group) -> Unit,
     onNewAnnouncement: () -> Unit = {},
     viewModel: GroupDetailViewModel = viewModel(
         factory = viewModelFactory {
             // Initializer to pass arguments to the viewModel
-            initializer { GroupDetailViewModel(createSavedStateHandle()) }
+            initializer {
+                val application = checkNotNull(this[APPLICATION_KEY])
+                GroupDetailViewModel(
+                    savedStateHandle = createSavedStateHandle(),
+                    calendarSync = CalendarSync(
+                        GroupRepository(),
+                        CalendarDataSource(application)
+                    )
+                )
+            }
         }
     )
 ) {
@@ -79,7 +93,7 @@ fun GroupDetailContent(
     uiState: GroupDetailUiState,
     onBack: () -> Unit,
     onFilterSelected: (FeedFilter) -> Unit,
-    onProposeEvent: () -> Unit,
+    onProposeEvent: (Group) -> Unit,
     onNewAnnouncement: () -> Unit,
     onTabClick: (BottomNavTab) -> Unit,
     modifier: Modifier = Modifier
@@ -137,7 +151,7 @@ fun GroupDetailContent(
                 // Only the admin can propose events and post announcements.
                 if (uiState.isAdmin) {
                     ActionBar(
-                        onProposeEvent = onProposeEvent,
+                        onProposeEvent = { onProposeEvent(uiState.group) },
                         onNewAnnouncement = onNewAnnouncement
                     )
                 }
@@ -419,7 +433,7 @@ private fun GroupDetailContentPreview() {
     }
 }
 
-private val previewGroup = com.example.teamsync.data.model.Group(
+private val previewGroup = Group(
     id = "1",
     name = "Capstone Team",
     memberIds = listOf("me", "a", "b", "c", "d"),
