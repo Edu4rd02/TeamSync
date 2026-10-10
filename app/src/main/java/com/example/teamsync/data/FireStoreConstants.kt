@@ -34,6 +34,17 @@ internal object FireStoreConstants {
         const val WINDOW_END = "windowEnd"
     }
 
+    const val EVENTS_COLLECTION = "events"
+    object EventFields {
+        const val TITLE = "title"
+        const val LINK = "link"
+        const val START_AT = "startAt"
+        const val END_AT = "endAt"
+        const val CREATED_AT = "createdAt"
+        const val UPDATED_AT = "updatedAt"
+        const val STATUS = "status"
+    }
+
     object TimeSlotFields {
         const val START = "start"
         const val END = "end"

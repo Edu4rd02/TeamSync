@@ -6,6 +6,8 @@ import com.example.teamsync.data.FireStoreConstants.BusyBlocksFields
 import com.example.teamsync.data.FireStoreConstants.GroupFields
 import com.example.teamsync.data.FireStoreConstants.TimeSlotFields
 import com.example.teamsync.data.FireStoreConstants.MemberFields
+import com.example.teamsync.data.FreeBlocksResult
+import com.example.teamsync.data.findFreeBlocks
 import com.example.teamsync.data.model.CalendarStatus
 import com.example.teamsync.data.model.Group
 import com.example.teamsync.data.model.Member
@@ -19,8 +21,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import java.time.DayOfWeek
+import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneId
 import java.util.concurrent.CancellationException
 
 class GroupRepository(
@@ -257,6 +262,57 @@ class GroupRepository(
     } catch (e: Exception) {
         Log.e(TAG, "Error syncing calendar for $userId in $groupId", e)
         Result.failure(e)
+    }
+
+
+    suspend fun freeBlocks(
+        groupId: String,
+        range: Pair<LocalDate, LocalDate>,
+        duration: Duration,
+        zone: ZoneId = ZoneId.systemDefault(),
+        preferredHours: ClosedRange<LocalTime>? = null
+    ): FreeBlocksResult {
+        val group = getGroupOnce(groupId) ?: return FreeBlocksResult(emptyList(), 0, 0)
+
+        // Only the members with a synced calendar count, the rest are just reported
+        val members = groups.document(groupId)
+            .collection(FireStoreConstants.MEMBERS_COLLECTION).get().await()
+            .documents.mapNotNull { it.toMember() }
+        val connectedIds = members
+            .filter { it.calendarStatus == CalendarStatus.CONNECTED }
+            .map { it.uid }
+            .toSet()
+
+        val busyDocs = busyBlocksOf(groupId).get().await()
+        val busyDocsByUser = busyDocs.documents.mapNotNull { doc ->
+            val userId = doc.getString(BusyBlocksFields.USER_ID) ?: return@mapNotNull null
+            val blocksRaw = doc.get(BusyBlocksFields.BLOCK) as? List<*> ?: return@mapNotNull null
+            val slots = blocksRaw.mapNotNull { item ->
+                val map = item as? Map<*, *> ?: return@mapNotNull null
+                val start = (map[TimeSlotFields.START] as? Number)?.toLong() ?: return@mapNotNull null
+                val end = (map[TimeSlotFields.END] as? Number)?.toLong() ?: return@mapNotNull null
+                TimeSlot(start, end)
+            }
+            userId to slots
+        }.toMap()
+
+        // Get all the busy blocks for a user
+        // If the user doesn't sync is consider free
+        val busyByUser = connectedIds.associateWith { busyDocsByUser[it].orEmpty() }
+        val options = findFreeBlocks(
+            group = group,
+            busyByUser = busyByUser,
+            range = range,
+            durationMs = duration.toMillis(),
+            zone = zone,
+            preferredHours = preferredHours
+        )
+        return FreeBlocksResult(
+            options = options,
+            syncedCount = connectedIds.size,
+            unsyncedCount = members.size - connectedIds.size,
+            names = members.associate { it.uid to (it.displayName ?: "Unknown member") }
+        )
     }
 
     // A just-written serverTimestamp is null locally until the server confirms it, so estimate it.

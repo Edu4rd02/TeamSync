@@ -2,6 +2,7 @@ package com.example.teamsync.ui.screens.admin
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePickerDialog
@@ -20,7 +22,11 @@ import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RangeSlider
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -30,13 +36,16 @@ import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -46,11 +55,13 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.teamsync.data.CalendarSync
 import com.example.teamsync.ui.BlockSelection
 import com.example.teamsync.ui.CreateEventUiState
 import com.example.teamsync.ui.CreateEventViewModel
 import com.example.teamsync.ui.DayAvailability
 import com.example.teamsync.ui.FreeBlock
+import com.example.teamsync.ui.HoursError
 import com.example.teamsync.ui.components.BottomNavTab
 import com.example.teamsync.ui.components.TeamSyncBottomNav
 import com.example.teamsync.ui.components.TeamSyncHeader
@@ -62,6 +73,7 @@ import java.time.LocalTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.roundToInt
 
 private val FreeBackground = Color(0xFFDCF4E6)
 private val FreeContent = Color(0xFF16804A)
@@ -89,12 +101,15 @@ fun CreateEventScreen(
 
     CreateEventContent(
         uiState = uiState,
+        onTitleChange = viewModel::onTitleChange,
+        onLinkChange = viewModel::onLinkChange,
         onBack = onBack,
         onDurationChange = viewModel::onDurationChange,
         onDateRangeChange = viewModel::onDateRangeChange,
+        onPreferredHoursChange = viewModel::onPreferredHoursChange,
         onBlockSelected = viewModel::onBlockSelected,
         onStartTimeChange = viewModel::onStartTimeChange,
-        onConfirmClick = {},
+        onConfirmClick = { viewModel.onConfirm(onSuccess = onBack) },
         onTabClick = onTabClick
     )
 }
@@ -102,9 +117,12 @@ fun CreateEventScreen(
 @Composable
 fun CreateEventContent(
     uiState: CreateEventUiState,
+    onTitleChange: (String) -> Unit,
+    onLinkChange: (String) -> Unit,
     onBack: () -> Unit,
     onDurationChange: (Duration) -> Unit,
     onDateRangeChange: (LocalDate, LocalDate) -> Unit,
+    onPreferredHoursChange: (LocalTime, LocalTime) -> Unit,
     onBlockSelected: (LocalDate, FreeBlock) -> Unit,
     onStartTimeChange: (LocalTime) -> Unit,
     onConfirmClick: () -> Unit,
@@ -152,6 +170,48 @@ fun CreateEventContent(
                 .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+
+            OutlinedTextField(
+                value = uiState.title,
+                onValueChange = onTitleChange,
+                isError = uiState.showErrors && !uiState.isTitleValid,
+                label = { Text(
+                    text = "Title",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                ) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    errorContainerColor = MaterialTheme.colorScheme.errorContainer,
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                ),
+                placeholder = { Text("Team meeting") },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            OutlinedTextField(
+                value = uiState.link,
+                onValueChange = onLinkChange,
+                isError = uiState.showErrors && !uiState.isLinkValid,
+                label = { Text(
+                    text = "Meeting Link (optional)",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                ) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    errorContainerColor = MaterialTheme.colorScheme.errorContainer,
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                ),
+                placeholder = { Text("https://meet.google.com/...") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 InfoField(
                     label = "DURATION",
@@ -165,6 +225,19 @@ fun CreateEventContent(
                             uiState.rangeEnd.format(RangeFormatter),
                     onClick = { showRangeDialog = true },
                     modifier = Modifier.weight(1f)
+                )
+            }
+
+            val workStart = uiState.workStart
+            val workEnd = uiState.workEnd
+            if (workStart != null && workEnd != null && workStart < workEnd) {
+                HoursRangeSlider(
+                    workStart = workStart,
+                    workEnd = workEnd,
+                    start = uiState.preferredStart ?: workStart,
+                    end = uiState.preferredEnd ?: workEnd,
+                    error = uiState.hoursError,
+                    onChange = onPreferredHoursChange
                 )
             }
 
@@ -188,9 +261,27 @@ fun CreateEventContent(
                 }
             }
 
+            if (uiState.unsyncedCount > 0) {
+                val members = if (uiState.unsyncedCount == 1) "member has" else "members have"
+                Text(
+                    text = "${uiState.unsyncedCount} $members no synced calendar and " +
+                            "aren't counted in the availability.",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = PartialContent,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(PartialBackground, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                )
+            }
+
             if (uiState.days.isEmpty()) {
                 Text(
-                    text = "No free blocks in this range",
+                    text = when {
+                        uiState.isLoading -> "Looking for free blocks…"
+                        uiState.loadFailed -> "Couldn't load the availability. Try again."
+                        else -> "No free blocks in this range"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 8.dp)
@@ -220,6 +311,70 @@ fun CreateEventContent(
         )
     }
 }
+
+// Steps for slider
+private const val HOURS_STEP_MIN = 30
+
+// Slider to select the hours of the day (inside the group's work hours) where the event can be.
+@Composable
+private fun HoursRangeSlider(
+    workStart: LocalTime,
+    workEnd: LocalTime,
+    start: LocalTime,
+    end: LocalTime,
+    error: HoursError?,
+    onChange: (LocalTime, LocalTime) -> Unit
+) {
+    val minWork = workStart.toMinuteOfDay().toFloat()
+    val maxWork = workEnd.toMinuteOfDay().toFloat()
+    val steps = ((maxWork - minWork) / HOURS_STEP_MIN).toInt() - 1
+
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "PREFERRED HOURS",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "${start.format(TimeFormatter)} – ${end.format(TimeFormatter)}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        RangeSlider(
+            value = start.toMinuteOfDay().toFloat()..end.toMinuteOfDay().toFloat(),
+            onValueChange = { range ->
+                onChange(
+                    range.start.roundToInt().toLocalTime(),
+                    range.endInclusive.roundToInt().toLocalTime()
+                )
+            },
+            valueRange = minWork..maxWork,
+            steps = steps.coerceAtLeast(0)
+        )
+        error?.let {
+            Text(
+                text = when (it) {
+                    HoursError.START_AFTER_END -> "The start hour can't be after the end hour."
+                    HoursError.OUTSIDE_WORK_HOURS -> "These hours are outside the group's work hours."
+                    HoursError.SHORTER_THAN_DURATION -> "These hours are shorter than the event duration."
+                },
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+    }
+}
+
+// Transform the hours into minutes
+private fun LocalTime.toMinuteOfDay(): Int = hour * 60 + minute
+
+// Transform the minutes into hours
+private fun Int.toLocalTime(): LocalTime = LocalTime.of(this / 60, this % 60)
 
 @Composable
 private fun InfoField(
@@ -262,6 +417,10 @@ private fun DayCard(
 ) {
     val colors = MaterialTheme.colorScheme
     val isSelected = selection != null
+    var peopleBlock by remember { mutableStateOf<FreeBlock?>(null) }
+
+    peopleBlock?.let { BlockPeopleDialog(block = it, onDismiss = { peopleBlock = null }) }
+
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = colors.surface,
@@ -295,15 +454,16 @@ private fun DayCard(
                     BlockChip(
                         block = block,
                         selected = selection?.block == block,
-                        onClick = { onBlockSelected(block) }
+                        onClick = { onBlockSelected(block) },
+                        onLongClick = { peopleBlock = block }
                     )
                 }
             }
 
-            val note = when {
-                isSelected -> "Tap a block, then pick the start time inside it."
-                else -> day.busyNote
-            }
+            // Hint that the long press exists, only when the blocks carry names
+            val hint = "Long press a block to see who's available."
+                .takeIf { day.blocks.any { it.attendees.isNotEmpty() || it.missing.isNotEmpty() } }
+            val note = listOfNotNull(day.busyNote, hint).joinToString(" ").ifEmpty { null }
             note?.let {
                 Text(
                     text = it,
@@ -331,14 +491,27 @@ private fun AvailabilityBadge(day: DayAvailability) {
     )
 }
 
+// Tap selects the block; long press opens the dialog with who can and can't make it.
 @Composable
-private fun BlockChip(block: FreeBlock, selected: Boolean, onClick: () -> Unit) {
+private fun BlockChip(
+    block: FreeBlock,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
     val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(10.dp)
     Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(10.dp),
+        shape = shape,
         color = if (selected) colors.primary else colors.background,
-        border = if (selected) null else BorderStroke(1.dp, colors.outlineVariant)
+        border = if (selected) null else BorderStroke(1.dp, colors.outlineVariant),
+        modifier = Modifier
+            .clip(shape) // so the ripple follows the rounded corners
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onLongClickLabel = "Show who is available"
+            )
     ) {
         Text(
             text = formatBlock(block),
@@ -347,6 +520,35 @@ private fun BlockChip(block: FreeBlock, selected: Boolean, onClick: () -> Unit) 
             modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp)
         )
     }
+}
+
+@Composable
+private fun BlockPeopleDialog(block: FreeBlock, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(formatBlock(block)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Available (${block.attendees.size})",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = FreeContent
+                )
+                block.attendees.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+
+                if (block.missing.isNotEmpty()) {
+                    Text(
+                        text = "Busy (${block.missing.size})",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = PartialContent,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    block.missing.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
 }
 
 @Composable
@@ -368,14 +570,6 @@ private fun ConfirmBar(
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (selection != null) {
-                TextButton(
-                    onClick = { showPicker = true },
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                ) {
-                    Text("Start time: ${selection.startTime.format(TimeFormatter)} · change")
-                }
-            }
             Surface(
                 onClick = onClick,
                 enabled = enabled,
@@ -486,7 +680,8 @@ private fun DateRangeDialog(
 ) {
     val state = rememberDateRangePickerState(
         initialSelectedStartDateMillis = start.toPickerMillis(),
-        initialSelectedEndDateMillis = end.toPickerMillis()
+        initialSelectedEndDateMillis = end.toPickerMillis(),
+        selectableDates = SyncedDates
     )
     val pickedStart = state.selectedStartDateMillis
     val pickedEnd = state.selectedEndDateMillis
@@ -506,6 +701,16 @@ private fun DateRangeDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     ) {
         DateRangePicker(state = state, modifier = Modifier.height(500.dp))
+    }
+}
+
+// Only the days the calendar sync covers can be picked: today up to SYNC_DAYS days ahead.
+@OptIn(ExperimentalMaterial3Api::class)
+private val SyncedDates = object : SelectableDates {
+    override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+        val date = utcTimeMillis.toPickerDate()
+        val today = LocalDate.now()
+        return !date.isBefore(today) && date.isBefore(today.plusDays(CalendarSync.SYNC_DAYS.toLong()))
     }
 }
 
@@ -547,6 +752,8 @@ private fun CreateEventContentPreview() {
             uiState = CreateEventUiState(
                 rangeStart = LocalDate.of(2026, 9, 15),
                 rangeEnd = LocalDate.of(2026, 9, 22),
+                workStart = LocalTime.of(7, 0),
+                workEnd = LocalTime.of(17, 0),
                 lastSyncedMinutesAgo = 12,
                 days = listOf(
                     DayAvailability(thursday, 5, 5, listOf(morning, afternoon)),
@@ -569,9 +776,12 @@ private fun CreateEventContentPreview() {
                 ),
                 selection = BlockSelection(thursday, afternoon, LocalTime.of(16, 0))
             ),
+            onTitleChange = {},
+            onLinkChange = {},
             onBack = {},
             onDurationChange = {},
             onDateRangeChange = { _, _ -> },
+            onPreferredHoursChange = { _, _ -> },
             onBlockSelected = { _, _ -> },
             onStartTimeChange = {},
             onConfirmClick = {},
