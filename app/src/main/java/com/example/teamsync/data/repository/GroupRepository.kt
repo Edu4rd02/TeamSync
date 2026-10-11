@@ -8,6 +8,7 @@ import com.example.teamsync.data.FireStoreConstants.TimeSlotFields
 import com.example.teamsync.data.FireStoreConstants.MemberFields
 import com.example.teamsync.data.FreeBlocksResult
 import com.example.teamsync.data.findFreeBlocks
+import com.example.teamsync.data.instantOf
 import com.example.teamsync.data.model.CalendarStatus
 import com.example.teamsync.data.model.Group
 import com.example.teamsync.data.model.Member
@@ -22,7 +23,6 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import java.time.DayOfWeek
 import java.time.Duration
-import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
@@ -313,13 +313,6 @@ class GroupRepository(
             unsyncedCount = members.size - connectedIds.size,
             names = members.associate { it.uid to (it.displayName ?: "Unknown member") }
         )
-    }
-
-    // A just-written serverTimestamp is null locally until the server confirms it, so estimate it.
-    private fun DocumentSnapshot.instantOf(field: String): Instant {
-        val timestamp = getTimestamp(field, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-            ?: return Instant.now()
-        return Instant.ofEpochSecond(timestamp.seconds, timestamp.nanoseconds.toLong())
     }
 
     private companion object {

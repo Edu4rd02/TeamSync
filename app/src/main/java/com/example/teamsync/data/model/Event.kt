@@ -1,6 +1,6 @@
 package com.example.teamsync.data.model
 
-import com.google.firebase.Timestamp
+import java.time.Instant
 
 enum class EventStatus(val value: String) {
     SCHEDULED("Scheduled"),
@@ -15,9 +15,9 @@ enum class EventStatus(val value: String) {
 data class Event(
     val id: String,
     val title: String,
-    val startAt: Timestamp,
-    val endAt: Timestamp,
-    val createdAt: Timestamp,
-    val updatedAt: Timestamp,
+    val startAt: Instant,
+    val endAt: Instant,
+    val createdAt: Instant,
+    val updatedAt: Instant,
     val status: EventStatus = EventStatus.SCHEDULED
 )

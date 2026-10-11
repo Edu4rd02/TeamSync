@@ -4,8 +4,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.teamsync.data.CalendarSync
+import com.example.teamsync.data.model.Event
 import com.example.teamsync.data.model.Group
 import com.example.teamsync.data.repository.AuthRepository
+import com.example.teamsync.data.repository.EventRepository
 import com.example.teamsync.data.repository.GroupRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,6 +15,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 enum class FeedFilter { ALL, EVENTS, ANNOUNCEMENTS }
 
@@ -38,6 +43,7 @@ data class FeedItem(
 data class GroupDetailUiState(
     val isLoading: Boolean = true,
     val group: Group? = null,
+    val events: List<Event> = emptyList(),
     val isAdmin: Boolean = false,
     val photoUrl: String? = null,
     val filter: FeedFilter = FeedFilter.ALL,
@@ -59,6 +65,7 @@ class GroupDetailViewModel(
     savedStateHandle: SavedStateHandle,
     private val calendarSync: CalendarSync,
     private val groupRepository: GroupRepository = GroupRepository(),
+    private val eventRepository: EventRepository = EventRepository(),
     private val authRepository: AuthRepository = AuthRepository()
 ) : ViewModel() {
 
@@ -82,11 +89,33 @@ class GroupDetailViewModel(
                 }
         }
 
+        viewModelScope.launch {
+            eventRepository.getEvents(groupId)
+                .catch { _uiState.update { state -> state.copy(isLoading = false) } }
+                .collect { events ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            feed = events.map { e -> e.toFeedItem() },
+                            events = events
+                        )
+                    }
+                }
+        }
+
         // Refresh the busy blocks on entering; the function skips it if synced within the last 2 min
         authRepository.userId?.let { userId ->
             viewModelScope.launch { calendarSync.sync(groupId, userId) }
         }
     }
+
+    private fun Event.toFeedItem() = FeedItem(
+        id = id,
+        type = FeedItemType.EVENT,
+        title = title,
+        timeLabel = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+            .format(startAt.atZone(ZoneId.systemDefault()))
+    )
 
     fun onFilterSelected(filter: FeedFilter) = _uiState.update { it.copy(filter = filter) }
 }
