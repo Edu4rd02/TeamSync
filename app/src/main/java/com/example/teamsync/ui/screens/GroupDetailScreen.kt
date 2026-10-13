@@ -19,15 +19,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -64,7 +70,6 @@ fun GroupDetailScreen(
     onBack: () -> Unit,
     onTabClick: (BottomNavTab) -> Unit,
     onProposeEvent: (Group) -> Unit,
-    onNewAnnouncement: () -> Unit = {},
     viewModel: GroupDetailViewModel = viewModel(
         factory = viewModelFactory {
             // Initializer to pass arguments to the viewModel
@@ -99,7 +104,7 @@ fun GroupDetailScreen(
         onBack = onBack,
         onFilterSelected = viewModel::onFilterSelected,
         onProposeEvent = onProposeEvent,
-        onNewAnnouncement = onNewAnnouncement,
+        onPublishAnnouncement = viewModel::publishAnnouncement,
         onTabClick = onTabClick
     )
 }
@@ -110,10 +115,22 @@ fun GroupDetailContent(
     onBack: () -> Unit,
     onFilterSelected: (FeedFilter) -> Unit,
     onProposeEvent: (Group) -> Unit,
-    onNewAnnouncement: () -> Unit,
+    onPublishAnnouncement: (title: String, text: String, onSuccess: () -> Unit) -> Unit,
     onTabClick: (BottomNavTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showAnnouncementDialog by rememberSaveable { mutableStateOf(false) }
+
+    if (showAnnouncementDialog) {
+        NewAnnouncementDialog(
+            isPublishing = uiState.isPublishing,
+            onDismiss = { showAnnouncementDialog = false },
+            onPublish = { title, text ->
+                onPublishAnnouncement(title, text) { showAnnouncementDialog = false }
+            }
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -168,7 +185,7 @@ fun GroupDetailContent(
                 if (uiState.isAdmin) {
                     ActionBar(
                         onProposeEvent = { onProposeEvent(uiState.group) },
-                        onNewAnnouncement = onNewAnnouncement
+                        onNewAnnouncement = { showAnnouncementDialog = true }
                     )
                 }
             }
@@ -358,6 +375,14 @@ private fun FeedItemCard(item: FeedItem) {
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface
             )
+            item.text?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
             item.author?.let {
                 Text(
                     text = it,
@@ -368,6 +393,51 @@ private fun FeedItemCard(item: FeedItem) {
             }
         }
     }
+}
+
+@Composable
+private fun NewAnnouncementDialog(
+    isPublishing: Boolean,
+    onDismiss: () -> Unit,
+    onPublish: (title: String, text: String) -> Unit
+) {
+    var title by rememberSaveable { mutableStateOf("") }
+    var text by rememberSaveable { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = { if (!isPublishing) onDismiss() },
+        title = { Text("New announcement") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Title") },
+                    singleLine = true,
+                    enabled = !isPublishing,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("Message") },
+                    minLines = 3,
+                    maxLines = 6,
+                    enabled = !isPublishing,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onPublish(title, text) },
+                enabled = !isPublishing && title.isNotBlank() && text.isNotBlank()
+            ) { Text(if (isPublishing) "Publishing…" else "Publish") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isPublishing) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable
@@ -443,7 +513,7 @@ private fun GroupDetailContentPreview() {
             onBack = {},
             onFilterSelected = {},
             onProposeEvent = {},
-            onNewAnnouncement = {},
+            onPublishAnnouncement = { _, _, _ -> },
             onTabClick = {}
         )
     }

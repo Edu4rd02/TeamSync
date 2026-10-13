@@ -15,6 +15,7 @@ const MEMBER_IDS = "memberIds";
 const OWNER_ID = "ownerId";
 const GROUP_NAME = "name";
 const EVENT_TITLE = "title";
+const ANNOUNCEMENT_TITLE = "title";
 
 // sendEachForMulticast accepts at most 500 tokens per call.
 const FCM_BATCH_SIZE = 500;
@@ -24,8 +25,74 @@ const DEAD_TOKEN_CODES = new Set([
 ]);
 
 /**
- * Notifies every member of a group, except its admin (owner), when an
- * event is created under groups/{groupId}/events/{eventId}.
+ * Sends a push to every member of a group except its admin (owner).
+ * `groupId` travels in the data payload so the app can open that group
+ * when the notification is tapped.
+ */
+async function notifyGroupMembers(
+  groupId: string,
+  buildMessage: (groupName: string) => {title: string; body: string}
+) {
+  // Fetch the group document
+  const db = getFirestore();
+  const groupSnap = await db.collection(GROUPS).doc(groupId).get();
+  if (!groupSnap.exists) return;
+
+  // Get the owner and members ids
+  const ownerId = groupSnap.get(OWNER_ID) as string | undefined;
+  const memberIds = (groupSnap.get(MEMBER_IDS) as string[] | undefined) ?? [];
+  const recipients = memberIds.filter((uid) => uid !== ownerId);
+
+  // Checks if the only member is not the admin
+  if (recipients.length === 0) return;
+
+  const userSnaps = await db.getAll(
+    ...recipients.map((uid) => db.collection(USERS).doc(uid))
+  );
+
+  // token -> owner uid, so dead tokens can be removed from the right user.
+  const tokenOwner = new Map<string, string>();
+  for (const snap of userSnaps) {
+    const tokens = (snap.get(FCM_TOKENS) as string[] | undefined) ?? [];
+    tokens.forEach((token) => tokenOwner.set(token, snap.id));
+  }
+  const tokens = [...tokenOwner.keys()];
+  if (tokens.length === 0) return;
+
+  const groupName = (groupSnap.get(GROUP_NAME) as string | undefined) ??
+    "Your group";
+
+  // Data-only: the app's onMessageReceived builds the notification.
+  // All values must be strings.
+  const data = {...buildMessage(groupName), groupId};
+
+  const deadTokens: string[] = [];
+  for (let i = 0; i < tokens.length; i += FCM_BATCH_SIZE) {
+    const batch = tokens.slice(i, i + FCM_BATCH_SIZE);
+    const res = await getMessaging().sendEachForMulticast({
+      tokens: batch,
+      data,
+      android: {priority: "high"},
+    });
+    res.responses.forEach((r, idx) => {
+      if (r.error && DEAD_TOKEN_CODES.has(r.error.code)) {
+        deadTokens.push(batch[idx]);
+      } else if (r.error) {
+        logger.warn("FCM send failed", {code: r.error.code});
+      }
+    });
+  }
+
+  // Remove tokens FCM says no longer exist.
+  await Promise.all(deadTokens.map((token) =>
+    db.collection(USERS).doc(tokenOwner.get(token) as string)
+      .update({[FCM_TOKENS]: FieldValue.arrayRemove(token)})
+  ));
+}
+
+/**
+ * Notifies group members when an event is created under
+ * groups/{groupId}/events/{eventId}.
  */
 export const onEventCreated = onDocumentCreated(
     // Document path to see
@@ -42,65 +109,34 @@ export const onEventCreated = onDocumentCreated(
     const eventData = event.data?.data();
     if (!eventData) return;
 
-    // Fetch the group document
-    const db = getFirestore();
-    const groupSnap = await db.collection(GROUPS).doc(groupId).get();
-    if (!groupSnap.exists) return;
-
-    // Get the owner and members ids
-    const ownerId = groupSnap.get(OWNER_ID) as string | undefined;
-    const memberIds = (groupSnap.get(MEMBER_IDS) as string[] | undefined) ?? [];
-    const recipients = memberIds.filter((uid) => uid !== ownerId);
-
-    // Checks if the only member is not the admin
-    if (recipients.length === 0) return;
-
-    const userSnaps = await db.getAll(
-      ...recipients.map((uid) => db.collection(USERS).doc(uid))
-    );
-
-    // token -> owner uid, so dead tokens can be removed from the right user.
-    const tokenOwner = new Map<string, string>();
-    for (const snap of userSnaps) {
-      const tokens = (snap.get(FCM_TOKENS) as string[] | undefined) ?? [];
-      tokens.forEach((token) => tokenOwner.set(token, snap.id));
-    }
-    const tokens = [...tokenOwner.keys()];
-    if (tokens.length === 0) return;
-
-    const groupName = (groupSnap.get(GROUP_NAME) as string | undefined) ??
-      "Your group";
     const eventTitle = (eventData[EVENT_TITLE] as string | undefined) ?? "";
-
-    // Data-only: the app's onMessageReceived builds the notification.
-    // All values must be strings.
-    const data = {
+    await notifyGroupMembers(groupId, (groupName) => ({
       title: `New event in ${groupName}`,
       body: eventTitle,
-      groupId,
-    };
+    }));
+  }
+);
 
-    const deadTokens: string[] = [];
-    for (let i = 0; i < tokens.length; i += FCM_BATCH_SIZE) {
-      const batch = tokens.slice(i, i + FCM_BATCH_SIZE);
-      const res = await getMessaging().sendEachForMulticast({
-        tokens: batch,
-        data,
-        android: {priority: "high"},
-      });
-      res.responses.forEach((r, idx) => {
-        if (r.error && DEAD_TOKEN_CODES.has(r.error.code)) {
-          deadTokens.push(batch[idx]);
-        } else if (r.error) {
-          logger.warn("FCM send failed", {code: r.error.code});
-        }
-      });
-    }
+/**
+ * Notifies group members when an announcement is created under
+ * groups/{groupId}/announcements/{announcementId}.
+ */
+export const onAnnouncementCreated = onDocumentCreated(
+  {
+    document: "groups/{groupId}/announcements/{announcementId}",
+    region: "us-west2",
+  },
+  async (event) => {
+    const {groupId} = event.params;
 
-    // Remove tokens FCM says no longer exist.
-    await Promise.all(deadTokens.map((token) =>
-      db.collection(USERS).doc(tokenOwner.get(token) as string)
-        .update({[FCM_TOKENS]: FieldValue.arrayRemove(token)})
-    ));
+    const announcementData = event.data?.data();
+    if (!announcementData) return;
+
+    const announcementTitle =
+      (announcementData[ANNOUNCEMENT_TITLE] as string | undefined) ?? "";
+    await notifyGroupMembers(groupId, (groupName) => ({
+      title: `New announcement in ${groupName}`,
+      body: announcementTitle,
+    }));
   }
 );

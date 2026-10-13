@@ -4,8 +4,11 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.teamsync.data.CalendarSync
+import android.util.Log
+import com.example.teamsync.data.model.Announcement
 import com.example.teamsync.data.model.Event
 import com.example.teamsync.data.model.Group
+import com.example.teamsync.data.repository.AnnouncementsRepository
 import com.example.teamsync.data.repository.AuthRepository
 import com.example.teamsync.data.repository.EventRepository
 import com.example.teamsync.data.repository.GroupRepository
@@ -15,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -37,13 +41,17 @@ data class FeedItem(
     val type: FeedItemType,
     val title: String,
     val timeLabel: String,
-    val author: String? = null
+    val author: String? = null,
+    val text: String? = null,
+    val createdAt: Instant = Instant.EPOCH
 )
 
 data class GroupDetailUiState(
     val isLoading: Boolean = true,
     val group: Group? = null,
     val events: List<Event> = emptyList(),
+    val announcements: List<Announcement> = emptyList(),
+    val isPublishing: Boolean = false,
     val isAdmin: Boolean = false,
     val photoUrl: String? = null,
     val filter: FeedFilter = FeedFilter.ALL,
@@ -66,6 +74,7 @@ class GroupDetailViewModel(
     private val calendarSync: CalendarSync,
     private val groupRepository: GroupRepository = GroupRepository(),
     private val eventRepository: EventRepository = EventRepository(),
+    private val announcementsRepository: AnnouncementsRepository = AnnouncementsRepository(),
     private val authRepository: AuthRepository = AuthRepository()
 ) : ViewModel() {
 
@@ -94,11 +103,17 @@ class GroupDetailViewModel(
                 .catch { _uiState.update { state -> state.copy(isLoading = false) } }
                 .collect { events ->
                     _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            feed = events.map { e -> e.toFeedItem() },
-                            events = events
-                        )
+                        it.copy(isLoading = false, events = events).withFeed()
+                    }
+                }
+        }
+
+        viewModelScope.launch {
+            announcementsRepository.getAnnouncements(groupId)
+                .catch { _uiState.update { state -> state.copy(isLoading = false) } }
+                .collect { announcements ->
+                    _uiState.update {
+                        it.copy(isLoading = false, announcements = announcements).withFeed()
                     }
                 }
         }
@@ -109,13 +124,47 @@ class GroupDetailViewModel(
         }
     }
 
+    // Events and announcements arrive from separate listeners; merge them newest first.
+    private fun GroupDetailUiState.withFeed() = copy(
+        feed = (events.map { it.toFeedItem() } + announcements.map { it.toFeedItem() })
+            .sortedByDescending { it.createdAt }
+    )
+
     private fun Event.toFeedItem() = FeedItem(
         id = id,
         type = FeedItemType.EVENT,
         title = title,
-        timeLabel = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
-            .format(startAt.atZone(ZoneId.systemDefault()))
+        timeLabel = formatTime(startAt),
+        createdAt = createdAt
     )
 
+    private fun Announcement.toFeedItem() = FeedItem(
+        id = id,
+        type = FeedItemType.ANNOUNCEMENT,
+        title = title,
+        timeLabel = formatTime(createdAt),
+        text = text,
+        createdAt = createdAt
+    )
+
+    private fun formatTime(instant: Instant): String =
+        DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+            .format(instant.atZone(ZoneId.systemDefault()))
+
     fun onFilterSelected(filter: FeedFilter) = _uiState.update { it.copy(filter = filter) }
+
+    fun publishAnnouncement(title: String, text: String, onSuccess: () -> Unit) {
+        if (_uiState.value.isPublishing || title.isBlank() || text.isBlank()) return
+        _uiState.update { it.copy(isPublishing = true) }
+        viewModelScope.launch {
+            try {
+                announcementsRepository.createAnnouncement(groupId, title.trim(), text.trim())
+                onSuccess()
+            } catch (e: Exception) {
+                Log.e("GroupDetailViewModel", "Could not publish announcement", e)
+            } finally {
+                _uiState.update { it.copy(isPublishing = false) }
+            }
+        }
+    }
 }

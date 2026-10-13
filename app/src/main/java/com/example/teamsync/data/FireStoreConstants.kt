@@ -50,6 +50,13 @@ internal object FireStoreConstants {
         const val FCM_TOKENS = "fcmTokens"
     }
 
+    const val ANNOUNCEMENTS_COLLECTION = "announcements"
+    object AnnouncementFields {
+        const val TITLE = "title"
+        const val TEXT = "text"
+        const val CREATED_AT = "createdAt"
+    }
+
     object TimeSlotFields {
         const val START = "start"
         const val END = "end"

@@ -16,7 +16,9 @@ import com.example.teamsync.ui.screens.admin.CreateEventScreen
 
 @Composable
 fun TeamSyncNavGraph(
-    navController: NavHostController
+    navController: NavHostController,
+    // Group to open right after sign-in when launched from a notification.
+    initialGroupId: String? = null
 ){
     val onTabClick: (BottomNavTab) -> Unit = { tab ->
         val route = when (tab) {
@@ -40,6 +42,9 @@ fun TeamSyncNavGraph(
                 onSignedIn = {
                     navController.navigate(TeamSyncRoutes.GROUPS) {
                         popUpTo(TeamSyncRoutes.LOGIN) { inclusive = true }
+                    }
+                    initialGroupId?.let {
+                        navController.navigate(TeamSyncRoutes.groupDetail(it))
                     }
                 }
             )
