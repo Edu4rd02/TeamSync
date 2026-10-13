@@ -81,6 +81,8 @@ dependencies {
 
     implementation("com.google.firebase:firebase-firestore")
 
+    implementation("com.google.firebase:firebase-messaging")
+
     testImplementation(libs.junit)
     testImplementation("io.mockk:mockk:1.13.13")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")

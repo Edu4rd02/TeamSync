@@ -45,6 +45,11 @@ internal object FireStoreConstants {
         const val STATUS = "status"
     }
 
+    const val USERS_COLLECTION = "users"
+    object UsersFields{
+        const val FCM_TOKENS = "fcmTokens"
+    }
+
     object TimeSlotFields {
         const val START = "start"
         const val END = "end"

@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.teamsync.data.repository.AuthRepository
 import com.example.teamsync.data.repository.GoogleIdTokenResult
+import com.example.teamsync.data.repository.UserRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,7 +22,8 @@ data class LoginUiState(
 )
 
 class LoginViewModel(
-    private val authRepository: AuthRepository = AuthRepository()
+    private val authRepository: AuthRepository = AuthRepository(),
+    private val userRepository: UserRepository = UserRepository()
 ) : ViewModel() {
 
     // Check the current sign-in status to initialize state.
@@ -59,7 +61,14 @@ class LoginViewModel(
 
     private suspend fun onGoogleIdTokenReceived(idToken: String) {
         authRepository.signInWithGoogle(idToken)
-            .onSuccess { _uiState.update { it.copy(isLoading = false, isSignedIn = true) } }
+            .onSuccess {
+                _uiState.update { it.copy(isLoading = false, isSignedIn = true) }
+
+                viewModelScope.launch {
+                   userRepository.registerFcmToken(idToken)
+                       .onFailure { e -> Log.e(TAG, "Couldn't register FCM token", e) }
+                }
+            }
             .onFailure { e ->
                 Log.e(TAG, "Firebase sign-in failed", e)
                 _uiState.update {

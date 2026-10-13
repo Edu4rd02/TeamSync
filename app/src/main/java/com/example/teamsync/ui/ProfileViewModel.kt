@@ -1,9 +1,11 @@
 package com.example.teamsync.ui
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.teamsync.data.repository.AuthRepository
+import com.example.teamsync.data.repository.UserRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,7 +21,8 @@ data class ProfileUiState(
 )
 
 class ProfileViewModel(
-    private val authRepository: AuthRepository = AuthRepository()
+    private val authRepository: AuthRepository = AuthRepository(),
+    private val userRepository: UserRepository = UserRepository()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -36,7 +39,12 @@ class ProfileViewModel(
         _uiState.update { it.copy(isSigningOut = true) }
         // Application context: safe to hold across rotation while the coroutine runs.
         val appContext = context.applicationContext
+
         viewModelScope.launch {
+            authRepository.userId?.let { uid ->
+                runCatching { userRepository.removeToken(uid) }
+                    .onFailure { Log.e("ProfileViewModel", "removeToken failed",it) }
+            }
             authRepository.signOut(appContext)
             _uiState.update { it.copy(isSigningOut = false, isSignedOut = true) }
         }

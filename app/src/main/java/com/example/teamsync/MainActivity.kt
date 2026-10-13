@@ -1,5 +1,7 @@
 package com.example.teamsync
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,6 +18,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val channel = NotificationChannel(
+            "events_channel", "Events", NotificationManager.IMPORTANCE_HIGH
+        )
+        getSystemService(NotificationManager::class.java)
+            .createNotificationChannel(channel)
         setContent {
             val navController = rememberNavController()
             TeamSyncTheme {
