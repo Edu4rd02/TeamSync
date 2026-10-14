@@ -65,8 +65,10 @@ class LoginViewModel(
                 _uiState.update { it.copy(isLoading = false, isSignedIn = true) }
 
                 viewModelScope.launch {
-                   userRepository.registerFcmToken(idToken)
-                       .onFailure { e -> Log.e(TAG, "Couldn't register FCM token", e) }
+                    authRepository.userId?.let { uid ->
+                        userRepository.registerFcmToken(uid)
+                            .onFailure { e -> Log.e(TAG, "Couldn't register FCM token", e) }
+                    }
                 }
             }
             .onFailure { e ->
