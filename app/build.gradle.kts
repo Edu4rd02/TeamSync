@@ -48,6 +48,18 @@ android {
         compose = true
         buildConfig = true
     }
+    packaging {
+        resources {
+            // mockk-android pulls in JUnit 5 jars that ship the same license files
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/LICENSE*.md"
+            excludes += "/META-INF/NOTICE*.md"
+        }
+    }
+    testOptions {
+        // Lets code under test call android.util.Log without "not mocked" errors
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -86,6 +98,9 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation("io.mockk:mockk:1.13.13")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    androidTestImplementation("io.mockk:mockk-android:1.13.13")
+    androidTestImplementation("androidx.test:rules:1.7.0")
+    androidTestImplementation("androidx.navigation:navigation-testing:2.9.7")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
