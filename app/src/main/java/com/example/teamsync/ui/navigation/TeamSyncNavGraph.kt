@@ -8,6 +8,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.navArgument
 import com.example.teamsync.ui.components.BottomNavTab
 import com.example.teamsync.ui.screens.CreateGroupScreen
+import com.example.teamsync.ui.screens.EventDetailScreen
 import com.example.teamsync.ui.screens.GroupDetailScreen
 import com.example.teamsync.ui.screens.MyGroupsScreen
 import com.example.teamsync.ui.screens.LoginScreen
@@ -61,7 +62,8 @@ fun TeamSyncNavGraph(
         composable(
             route = TeamSyncRoutes.GROUP_DETAIL,
             arguments = listOf(navArgument("groupId") {type = NavType.StringType})
-        ){
+        ){ entry ->
+            val groupId = checkNotNull(entry.arguments?.getString("groupId"))
             GroupDetailScreen(
                 onBack = {
                     navController.popBackStack()
@@ -69,13 +71,43 @@ fun TeamSyncNavGraph(
                 onProposeEvent = { group ->
                     navController.navigate(TeamSyncRoutes.createEvent(group.id))
                 },
+                onEventClick = { eventId ->
+                    navController.navigate(TeamSyncRoutes.eventDetail(groupId, eventId))
+                },
+                onTabClick = onTabClick
+            )
+        }
+
+        composable(
+            route = TeamSyncRoutes.EVENT_DETAIL,
+            arguments = listOf(
+                navArgument("groupId") { type = NavType.StringType },
+                navArgument("eventId") { type = NavType.StringType }
+            )
+        ){ entry ->
+            val groupId = checkNotNull(entry.arguments?.getString("groupId"))
+            val eventId = checkNotNull(entry.arguments?.getString("eventId"))
+            EventDetailScreen(
+                onBack = {
+                    navController.popBackStack()
+                },
+                onEdit = {
+                    navController.navigate(TeamSyncRoutes.createEvent(groupId, eventId))
+                },
                 onTabClick = onTabClick
             )
         }
 
         composable(
             route = TeamSyncRoutes.CREATE_EVENT,
-            arguments = listOf(navArgument("groupId") {type = NavType.StringType})
+            arguments = listOf(
+                navArgument("groupId") {type = NavType.StringType},
+                navArgument("eventId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
         ){
             CreateEventScreen(
                 onBack = {

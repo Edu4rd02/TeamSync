@@ -213,6 +213,20 @@ class GroupRepository(
         null
     }
 
+    fun getMembers(groupId: String): Flow<List<Member>> = callbackFlow {
+        val registration = groups.document(groupId)
+            .collection(FireStoreConstants.MEMBERS_COLLECTION)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Error listening to members of $groupId", error)
+                    close(error)
+                    return@addSnapshotListener
+                }
+                trySend(snapshot?.documents?.mapNotNull { it.toMember() }.orEmpty())
+            }
+        awaitClose { registration.remove() }
+    }
+
     suspend fun getMemberOnce(groupId: String, userId: String): Member? = try {
         groups.document(groupId)
             .collection(FireStoreConstants.MEMBERS_COLLECTION)
@@ -311,7 +325,8 @@ class GroupRepository(
             options = options,
             syncedCount = connectedIds.size,
             unsyncedCount = members.size - connectedIds.size,
-            names = members.associate { it.uid to (it.displayName ?: "Unknown member") }
+            names = members.associate { it.uid to (it.displayName ?: "Unknown member") },
+            busyByUser = busyByUser
         )
     }
 

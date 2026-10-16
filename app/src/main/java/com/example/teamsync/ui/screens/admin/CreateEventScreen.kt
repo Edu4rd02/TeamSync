@@ -160,7 +160,7 @@ fun CreateEventContent(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        TeamSyncHeader(title = "Propose Event", onBack = onBack)
+        TeamSyncHeader(title = if (uiState.isEditing) "Edit Event" else "Propose Event", onBack = onBack)
 
         Column(
             modifier = Modifier
@@ -211,6 +211,22 @@ fun CreateEventContent(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             )
+
+            val currentStart = uiState.currentStart
+            val currentEnd = uiState.currentEnd
+            if (currentStart != null && currentEnd != null) {
+                Text(
+                    text = "Now on ${currentStart.format(DayFormatter)} · " +
+                            "${currentStart.format(TimeFormatter)} – ${currentEnd.format(TimeFormatter)}. " +
+                            "Pick a block only to move it; members will have to confirm again.",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                )
+            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 InfoField(
@@ -299,7 +315,8 @@ fun CreateEventContent(
 
         ConfirmBar(
             selection = uiState.selection,
-            enabled = uiState.canConfirm,
+            isEditing = uiState.isEditing,
+            enabled = uiState.canConfirm && !uiState.isSaving,
             onTimeChange = onStartTimeChange,
             onClick = onConfirmClick
         )
@@ -554,6 +571,7 @@ private fun BlockPeopleDialog(block: FreeBlock, onDismiss: () -> Unit) {
 @Composable
 private fun ConfirmBar(
     selection: BlockSelection?,
+    isEditing: Boolean,
     enabled: Boolean,
     onTimeChange: (LocalTime) -> Unit,
     onClick: () -> Unit
@@ -579,8 +597,9 @@ private fun ConfirmBar(
             ) {
                 Text(
                     text = selection?.let {
-                        "Confirm ${it.date.format(ShortDayFormatter)}, ${it.startTime.format(TimeFormatter)}"
-                    } ?: "Select a free block",
+                        val action = if (isEditing) "Move to" else "Confirm"
+                        "$action ${it.date.format(ShortDayFormatter)}, ${it.startTime.format(TimeFormatter)}"
+                    } ?: if (isEditing) "Save changes" else "Select a free block",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier

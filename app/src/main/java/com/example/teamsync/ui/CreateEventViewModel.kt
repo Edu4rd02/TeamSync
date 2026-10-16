@@ -1,11 +1,14 @@
 package com.example.teamsync.ui
 
+import android.util.Log
 import android.util.Patterns
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.teamsync.data.CalendarSync
 import com.example.teamsync.data.MeetingOption
+import com.example.teamsync.data.isFree
+import com.example.teamsync.data.model.TimeSlot
 import com.example.teamsync.data.repository.AuthRepository
 import com.example.teamsync.data.repository.EventRepository
 import com.google.firebase.Timestamp
@@ -21,6 +24,7 @@ import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 
@@ -73,7 +77,11 @@ data class CreateEventUiState(
     val isSaving: Boolean = false,
     val saveFailed: Boolean = false,
     // Field errors are shown only after the user tried to confirm.
-    val showErrors: Boolean = false
+    val showErrors: Boolean = false,
+    // Editing an existing event: picking a block is optional (without one the time doesn't change)
+    val isEditing: Boolean = false,
+    val currentStart: LocalDateTime? = null,
+    val currentEnd: LocalTime? = null
 ) {
     val isTitleValid: Boolean get() = title.isNotBlank()
 
@@ -104,7 +112,8 @@ data class CreateEventUiState(
         get() = selection?.block?.end?.minus(duration)
 
     val canConfirm: Boolean
-        get() = selection != null && latestStart?.let { selection.startTime <= it } == true
+        get() = if (selection == null) isEditing
+        else latestStart?.let { selection.startTime <= it } == true
 }
 
 class CreateEventViewModel(
@@ -116,10 +125,18 @@ class CreateEventViewModel(
 
     val groupId: String = checkNotNull(savedStateHandle["groupId"])
 
-    private val _uiState = MutableStateFlow(CreateEventUiState(photoUrl = authRepository.photoUrl))
+    // Present when editing an existing event
+    private val eventId: String? = savedStateHandle["eventId"]
+
+    private val _uiState = MutableStateFlow(
+        CreateEventUiState(photoUrl = authRepository.photoUrl, isEditing = eventId != null)
+    )
     val uiState: StateFlow<CreateEventUiState> = _uiState.asStateFlow()
 
     private var loadJob: Job? = null
+
+    // Busy time of the synced members from the last search, to know who is free at the chosen start
+    private var busyByUser: Map<String, List<TimeSlot>> = emptyMap()
 
     init {
         // Get the work window
@@ -128,7 +145,32 @@ class CreateEventViewModel(
                 _uiState.update { it.copy(workStart = group.workStart, workEnd = group.workEnd) }
             }
         }
-        refreshBlocks()
+        if (eventId != null) loadEvent(eventId) else refreshBlocks()
+    }
+
+    // Fills the form with the event being edited; its duration is used to look for new blocks
+    private fun loadEvent(eventId: String) {
+        viewModelScope.launch {
+            try {
+                eventRepository.getEventOnce(groupId, eventId)?.let { event ->
+                    val zone = ZoneId.systemDefault()
+                    _uiState.update {
+                        it.copy(
+                            title = event.title,
+                            link = event.link.orEmpty(),
+                            duration = Duration.between(event.startAt, event.endAt),
+                            currentStart = event.startAt.atZone(zone).toLocalDateTime(),
+                            currentEnd = event.endAt.atZone(zone).toLocalTime()
+                        )
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("CreateEventViewModel", "Could not load event $eventId", e)
+            }
+            refreshBlocks()
+        }
     }
 
     // A new duration or range can invalidate the chosen block, so the selection is reset.
@@ -193,6 +235,7 @@ class CreateEventViewModel(
                     zone = zone,
                     preferredHours = state.preferredHours
                 )
+                busyByUser = result.busyByUser
                 _uiState.update {
                     it.copy(
                         days = result.options.toDays(result.syncedCount, result.names, zone),
@@ -221,26 +264,47 @@ class CreateEventViewModel(
     }
 
     // Saves the selected block as an event; [onSuccess] runs once it is stored.
+    // When editing, no selected block means only the title and link change.
     fun onConfirm(onSuccess: () -> Unit = {}) {
         _uiState.update { it.copy(showErrors = true) }
         val state = _uiState.value
         if (!state.isTitleValid || !state.isLinkValid) return
-        val selection = state.selection ?: return
+        val selection = state.selection
+        if (selection == null && !state.isEditing) return
         if (!state.canConfirm || state.isSaving) return
 
         _uiState.update { it.copy(isSaving = true, saveFailed = false) }
         viewModelScope.launch {
             try {
-                val start = selection.date.atTime(selection.startTime)
-                    .atZone(ZoneId.systemDefault()).toInstant()
-                val end = start.plus(state.duration)
-                eventRepository.createEvent(
-                    groupId = groupId,
-                    title = state.title,
-                    link = state.link,
-                    startAt = Timestamp(start.epochSecond, start.nano),
-                    endAt = Timestamp(end.epochSecond, end.nano)
-                )
+                val start = selection?.let {
+                    it.date.atTime(it.startTime).atZone(ZoneId.systemDefault()).toInstant()
+                }
+                val end = start?.plus(state.duration)
+                // Who is free during the whole event starts as confirmed
+                val confirmedIds = if (start != null && end != null) {
+                    freeMembers(start.toEpochMilli(), end.toEpochMilli())
+                } else emptyList()
+
+                if (eventId == null) {
+                    eventRepository.createEvent(
+                        groupId = groupId,
+                        title = state.title,
+                        link = state.link,
+                        startAt = checkNotNull(start).toTimestamp(),
+                        endAt = checkNotNull(end).toTimestamp(),
+                        confirmedIds = confirmedIds
+                    )
+                } else {
+                    eventRepository.updateEvent(
+                        groupId = groupId,
+                        eventId = eventId,
+                        title = state.title,
+                        link = state.link,
+                        startAt = start?.toTimestamp(),
+                        endAt = end?.toTimestamp(),
+                        confirmedIds = confirmedIds
+                    )
+                }
                 _uiState.update { it.copy(isSaving = false) }
                 onSuccess()
             } catch (e: CancellationException) {
@@ -250,6 +314,13 @@ class CreateEventViewModel(
             }
         }
     }
+
+    // The selected block can be longer than the event and its start can be moved, so the free
+    // members are checked again against the final time instead of taken from the block.
+    private fun freeMembers(start: Long, end: Long): List<String> =
+        busyByUser.filterValues { isFree(it, start, end) }.keys.sorted()
+
+    private fun Instant.toTimestamp() = Timestamp(epochSecond, nano)
 
     private companion object {
         const val REFRESH_DEBOUNCE_MS = 300L

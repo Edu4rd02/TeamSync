@@ -9,3 +9,10 @@ fun DocumentSnapshot.instantOf(field: String): Instant {
         ?: return Instant.now()
     return Instant.ofEpochSecond(timestamp.seconds, timestamp.nanoseconds.toLong())
 }
+
+// Like instantOf, but a field that is really null (not a pending serverTimestamp) stays null.
+fun DocumentSnapshot.instantOrNull(field: String): Instant? {
+    val timestamp = getTimestamp(field, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+        ?: return null
+    return Instant.ofEpochSecond(timestamp.seconds, timestamp.nanoseconds.toLong())
+}

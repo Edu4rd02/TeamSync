@@ -45,6 +45,13 @@ internal object FireStoreConstants {
         const val STATUS = "status"
     }
 
+    const val CONFIRMATIONS_COLLECTION = "confirmations"
+    object ConfirmationFields {
+        const val USER_ID = "uid"
+        const val STATUS = "status"
+        const val RESPONDED_AT = "respondedAt"
+    }
+
     const val USERS_COLLECTION = "users"
     object UsersFields{
         const val FCM_TOKENS = "fcmTokens"

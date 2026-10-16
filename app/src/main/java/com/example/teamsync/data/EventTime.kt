@@ -20,7 +20,9 @@ data class FreeBlocksResult(
     val syncedCount: Int,
     val unsyncedCount: Int,
     // Display name of every member by id, so the options (which carry ids) can be shown with names
-    val names: Map<String, String> = emptyMap()
+    val names: Map<String, String> = emptyMap(),
+    // Busy time of every synced member, to know exactly who is free at the start finally chosen
+    val busyByUser: Map<String, List<TimeSlot>> = emptyMap()
 )
 
 // Returns the meeting options inside the group's work windows

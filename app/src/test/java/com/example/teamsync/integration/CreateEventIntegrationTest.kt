@@ -3,6 +3,7 @@ package com.example.teamsync.integration
 import androidx.lifecycle.SavedStateHandle
 import com.example.teamsync.MainDispatcherRule
 import com.example.teamsync.data.CalendarSync
+import com.example.teamsync.data.EventCalendarSync
 import com.example.teamsync.data.FreeBlocksResult
 import com.example.teamsync.data.MeetingOption
 import com.example.teamsync.data.model.Event
@@ -242,7 +243,8 @@ class CreateEventIntegrationTest {
             announcementsRepository = mockk<AnnouncementsRepository> {
                 every { getAnnouncements("g1") } returns MutableStateFlow(emptyList())
             },
-            authRepository = authRepo
+            authRepository = authRepo,
+            eventCalendarSync = mockk<EventCalendarSync>(relaxed = true)
         )
         assertTrue(detail.uiState.value.feed.isEmpty())
 

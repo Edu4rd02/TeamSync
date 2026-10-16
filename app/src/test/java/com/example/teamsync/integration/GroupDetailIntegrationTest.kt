@@ -3,6 +3,7 @@ package com.example.teamsync.integration
 import androidx.lifecycle.SavedStateHandle
 import com.example.teamsync.MainDispatcherRule
 import com.example.teamsync.data.CalendarSync
+import com.example.teamsync.data.EventCalendarSync
 import com.example.teamsync.data.model.Announcement
 import com.example.teamsync.data.model.Event
 import com.example.teamsync.data.model.Group
@@ -69,7 +70,8 @@ class GroupDetailIntegrationTest {
         groupRepository = groupRepo,
         eventRepository = eventRepo,
         announcementsRepository = announcementsRepo,
-        authRepository = currentUser
+        authRepository = currentUser,
+        eventCalendarSync = mockk<EventCalendarSync>(relaxed = true)
     )
 
     //** Data from the repositories reaches the UI state

@@ -36,6 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -49,7 +50,10 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import com.example.teamsync.data.CalendarDataSource
 import com.example.teamsync.data.CalendarSync
+import com.example.teamsync.data.CalendarWriter
+import com.example.teamsync.data.EventCalendarSync
 import com.example.teamsync.data.model.Group
+import com.example.teamsync.data.repository.EventRepository
 import com.example.teamsync.data.repository.GroupRepository
 import com.example.teamsync.ui.FeedFilter
 import com.example.teamsync.ui.FeedItem
@@ -70,6 +74,7 @@ fun GroupDetailScreen(
     onBack: () -> Unit,
     onTabClick: (BottomNavTab) -> Unit,
     onProposeEvent: (Group) -> Unit,
+    onEventClick: (eventId: String) -> Unit,
     viewModel: GroupDetailViewModel = viewModel(
         factory = viewModelFactory {
             // Initializer to pass arguments to the viewModel
@@ -80,6 +85,10 @@ fun GroupDetailScreen(
                     calendarSync = CalendarSync(
                         GroupRepository(),
                         CalendarDataSource(application)
+                    ),
+                    eventCalendarSync = EventCalendarSync(
+                        EventRepository(),
+                        CalendarWriter(application)
                     )
                 )
             }
@@ -104,6 +113,7 @@ fun GroupDetailScreen(
         onBack = onBack,
         onFilterSelected = viewModel::onFilterSelected,
         onProposeEvent = onProposeEvent,
+        onEventClick = onEventClick,
         onPublishAnnouncement = viewModel::publishAnnouncement,
         onTabClick = onTabClick
     )
@@ -117,7 +127,8 @@ fun GroupDetailContent(
     onProposeEvent: (Group) -> Unit,
     onPublishAnnouncement: (title: String, text: String, onSuccess: () -> Unit) -> Unit,
     onTabClick: (BottomNavTab) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onEventClick: (eventId: String) -> Unit = {}
 ) {
     var showAnnouncementDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -176,7 +187,15 @@ fun GroupDetailContent(
                         )
                     } else {
                         uiState.visibleFeed.forEach { item ->
-                            key(item.id) { FeedItemCard(item) }
+                            key(item.id) {
+                                FeedItemCard(
+                                    item = item,
+                                    // Only events have a detail screen
+                                    onClick = if (item.type == FeedItemType.EVENT) {
+                                        { onEventClick(item.id) }
+                                    } else null
+                                )
+                            }
                         }
                     }
                 }
@@ -326,13 +345,17 @@ private fun NextEventCard(event: NextEvent) {
 }
 
 @Composable
-private fun FeedItemCard(item: FeedItem) {
+private fun FeedItemCard(item: FeedItem, onClick: (() -> Unit)? = null) {
     val isAnnouncement = item.type == FeedItemType.ANNOUNCEMENT
+    val shape = RoundedCornerShape(14.dp)
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = shape,
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -343,23 +366,40 @@ private fun FeedItemCard(item: FeedItem) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .background(
-                            color = if (isAnnouncement) AnnouncementBackground
-                            else MaterialTheme.colorScheme.primaryContainer,
-                            shape = RoundedCornerShape(8.dp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                color = if (isAnnouncement) AnnouncementBackground
+                                else MaterialTheme.colorScheme.primaryContainer,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = if (isAnnouncement) "ANNOUNCEMENT" else "EVENT",
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isAnnouncement) AnnouncementContent
+                            else MaterialTheme.colorScheme.onPrimaryContainer
                         )
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = if (isAnnouncement) "ANNOUNCEMENT" else "EVENT",
-                        fontSize = 10.sp,
-                        lineHeight = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (isAnnouncement) AnnouncementContent
-                        else MaterialTheme.colorScheme.onPrimaryContainer
-                    )
+                    }
+                    if (item.isCancelled) {
+                        Box(
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "CANCELLED",
+                                fontSize = 10.sp,
+                                lineHeight = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
                 }
                 Text(
                     text = item.timeLabel,

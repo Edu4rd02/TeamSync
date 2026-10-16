@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.teamsync.data.CalendarSync
+import com.example.teamsync.data.EventCalendarSync
 import android.util.Log
 import com.example.teamsync.data.model.Announcement
 import com.example.teamsync.data.model.Event
@@ -43,7 +44,8 @@ data class FeedItem(
     val timeLabel: String,
     val author: String? = null,
     val text: String? = null,
-    val createdAt: Instant = Instant.EPOCH
+    val createdAt: Instant = Instant.EPOCH,
+    val isCancelled: Boolean = false
 )
 
 data class GroupDetailUiState(
@@ -72,6 +74,7 @@ data class GroupDetailUiState(
 class GroupDetailViewModel(
     savedStateHandle: SavedStateHandle,
     private val calendarSync: CalendarSync,
+    private val eventCalendarSync: EventCalendarSync,
     private val groupRepository: GroupRepository = GroupRepository(),
     private val eventRepository: EventRepository = EventRepository(),
     private val announcementsRepository: AnnouncementsRepository = AnnouncementsRepository(),
@@ -118,9 +121,12 @@ class GroupDetailViewModel(
                 }
         }
 
-        // Refresh the busy blocks on entering; the function skips it if synced within the last 2 min
+        // Sync the calendar
         authRepository.userId?.let { userId ->
-            viewModelScope.launch { calendarSync.sync(groupId, userId) }
+            viewModelScope.launch {
+                val calendarChanged = eventCalendarSync.reconcileGroup(groupId, userId)
+                calendarSync.sync(groupId, userId, throttle = !calendarChanged)
+            }
         }
     }
 
@@ -135,7 +141,8 @@ class GroupDetailViewModel(
         type = FeedItemType.EVENT,
         title = title,
         timeLabel = formatTime(startAt),
-        createdAt = createdAt
+        createdAt = createdAt,
+        isCancelled = isCancelled
     )
 
     private fun Announcement.toFeedItem() = FeedItem(
