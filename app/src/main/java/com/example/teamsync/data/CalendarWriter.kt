@@ -88,6 +88,26 @@ class CalendarWriter(private val context: Context) {
         return false
     }
 
+    // Function to get pairs of (event ID, custom URI) for events created by this app (that are not deleted).
+    fun entryIds(uriPrefix: String?, endsAfter: Long): List<Pair<Long, String>> {
+        val projection = arrayOf(Events._ID, Events.CUSTOM_APP_URI)
+        var selection = "${Events.CUSTOM_APP_PACKAGE} = ? AND ${Events.DELETED} = 0 AND ${Events.DTEND} > ?"
+        val args = mutableListOf(context.packageName, endsAfter.toString())
+        if (uriPrefix != null) {
+            selection += " AND ${Events.CUSTOM_APP_URI} LIKE ?"
+            args += "$uriPrefix%"
+        }
+
+        val entries = mutableListOf<Pair<Long, String>>()
+        context.contentResolver.query(Events.CONTENT_URI, projection, selection, args.toTypedArray(), null)
+            ?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    entries.add(Pair(cursor.getLong(0), cursor.getString(1)))
+                }
+            }
+        return entries
+    }
+
     // A visible calendar the user can add events to, the primary one first.
     private fun writableCalendarId(): Long? {
         val selection = "${Calendars.VISIBLE} = 1 AND ${Calendars.CALENDAR_ACCESS_LEVEL} >= ?"

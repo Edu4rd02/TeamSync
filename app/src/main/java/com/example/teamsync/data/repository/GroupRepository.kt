@@ -17,6 +17,7 @@ import com.example.teamsync.data.model.TimeSlot
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Source
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -328,6 +329,44 @@ class GroupRepository(
             names = members.associate { it.uid to (it.displayName ?: "Unknown member") },
             busyByUser = busyByUser
         )
+    }
+
+    suspend fun getMyGroupIds(userId: String): Set<String>? = try{
+        groups.whereArrayContains(GroupFields.MEMBER_IDS, userId)
+            // Force the get to use the server data
+            .get(Source.SERVER)
+            .await()
+            .documents
+            .map { it.id }
+            .toSet()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.e(TAG, "Error reading groups of $userId from the server", e)
+        null
+    }
+
+    suspend fun removeMember(groupId: String, userId: String) {
+        val group = groups.document(groupId)
+        val events = group.collection(FireStoreConstants.EVENTS_COLLECTION)
+        val eventsIds = events.get(Source.SERVER).await().documents.map { it.id }
+
+        firestore.runBatch { batch ->
+            batch.update(group, GroupFields.MEMBER_IDS, FieldValue.arrayRemove(userId))
+            batch.delete(group.collection(FireStoreConstants.MEMBERS_COLLECTION).document(userId))
+            batch.delete(busyBlocksOf(groupId).document(userId))
+            eventsIds.forEach { eventId ->
+                batch.delete(
+                    events.document(eventId)
+                        .collection(FireStoreConstants.CONFIRMATIONS_COLLECTION)
+                        .document(userId)
+                )
+            }
+        }.await()
+    }
+
+    suspend fun deleteGroup(groupId: String) {
+        groups.document(groupId).delete().await()
     }
 
     private companion object {

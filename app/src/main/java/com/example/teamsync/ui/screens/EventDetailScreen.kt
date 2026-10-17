@@ -37,7 +37,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -50,7 +49,6 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import coil3.compose.AsyncImage
 import com.example.teamsync.data.CalendarWriter
 import com.example.teamsync.data.EventCalendarSync
 import com.example.teamsync.data.model.ConfirmationStatus
@@ -61,6 +59,7 @@ import com.example.teamsync.ui.AttendeeRow
 import com.example.teamsync.ui.EventDetailUiState
 import com.example.teamsync.ui.EventDetailViewModel
 import com.example.teamsync.ui.components.BottomNavTab
+import com.example.teamsync.ui.components.MemberAvatar
 import com.example.teamsync.ui.components.TeamSyncBottomNav
 import com.example.teamsync.ui.components.TeamSyncHeader
 import com.example.teamsync.ui.theme.TeamSyncTheme
@@ -77,9 +76,6 @@ private val RejectedBackground = Color(0xFFFEE2E2)
 private val RejectedContent = Color(0xFFB91C1C)
 private val CalendarDot = Color(0xFF4ADE80)
 
-private val AvatarColors = listOf(
-    Color(0xFFF08A3C), Color(0xFF3B82F6), Color(0xFFDB4C86), Color(0xFF17A57A), Color(0xFF8B5CF6)
-)
 
 private val DayFormatter = DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.US)
 private val TimeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
@@ -518,7 +514,7 @@ private fun AttendeeItem(attendee: AttendeeRow) {
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Avatar(attendee)
+        MemberAvatar(attendee.uid, attendee.name, attendee.photoUrl)
         Text(
             text = attendee.name,
             fontSize = 14.sp,
@@ -531,34 +527,6 @@ private fun AttendeeItem(attendee: AttendeeRow) {
             ConfirmationStatus.CONFIRMED -> Chip("Confirmed", ConfirmedBackground, ConfirmedContent)
             ConfirmationStatus.REJECTED -> Chip("Can't make it", RejectedBackground, RejectedContent)
             null -> Chip("Waiting", WaitingBackground, WaitingContent)
-        }
-    }
-}
-
-// The member's photo, or a colored circle with their initial
-@Composable
-private fun Avatar(attendee: AttendeeRow) {
-    val color = AvatarColors[Math.floorMod(attendee.uid.hashCode(), AvatarColors.size)]
-    Box(
-        modifier = Modifier
-            .size(30.dp)
-            .clip(CircleShape)
-            .background(color),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = attendee.name.firstOrNull()?.uppercase().orEmpty(),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = Color.White
-        )
-        attendee.photoUrl?.let {
-            AsyncImage(
-                model = it,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
         }
     }
 }

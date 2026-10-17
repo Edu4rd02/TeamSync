@@ -3,6 +3,7 @@ package com.example.teamsync.integration
 import android.app.Application
 import com.example.teamsync.MainDispatcherRule
 import com.example.teamsync.data.CalendarSync
+import com.example.teamsync.data.EventCalendarSync
 import com.example.teamsync.data.model.Group
 import com.example.teamsync.data.repository.AuthRepository
 import com.example.teamsync.data.repository.GroupRepository
@@ -56,12 +57,13 @@ class GroupsFlowIntegrationTest {
             )
             Result.success("joined")
         }
+        coEvery { getMyGroupIds(any()) } returns null
     }
 
     private val calendarSync = mockk<CalendarSync>(relaxed = true)
 
     private fun myGroupsVm() =
-        MyGroupsViewModel(mockk<Application>(relaxed = true), groupRepo, authRepo, calendarSync)
+        MyGroupsViewModel(mockk<Application>(relaxed = true), groupRepo, authRepo, calendarSync, mockk<EventCalendarSync>(relaxed = true))
 
     private fun createGroupVm() = CreateGroupViewModel(groupRepo, authRepo)
 

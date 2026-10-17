@@ -4,7 +4,7 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-10-16T18:22:22.963534400Z">
+        <DropdownSelection timestamp="2026-10-17T08:03:52.139718800Z">
           <Target type="DEFAULT_BOOT">
             <handle>
               <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\josee\.android\avd\Pixel_7.avd" />
@@ -14,17 +14,6 @@
         <DialogSelection />
       </SelectionState>
       <SelectionState runConfigName="MyGroupsContentTest">
-        <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-10-13T07:38:04.606372200Z">
-          <Target type="DEFAULT_BOOT">
-            <handle>
-              <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\josee\.android\avd\Pixel_7.avd" />
-            </handle>
-          </Target>
-        </DropdownSelection>
-        <DialogSelection />
-      </SelectionState>
-      <SelectionState runConfigName="joinButtonIsDisabledUntilACodeIsTyped()">
         <option name="selectionMode" value="DROPDOWN" />
         <DropdownSelection timestamp="2026-10-13T07:38:04.606372200Z">
           <Target type="DEFAULT_BOOT">

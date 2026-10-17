@@ -20,11 +20,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,6 +57,8 @@ import com.example.teamsync.data.CalendarSync
 import com.example.teamsync.data.CalendarWriter
 import com.example.teamsync.data.EventCalendarSync
 import com.example.teamsync.data.model.Group
+import com.example.teamsync.data.model.Member
+import com.example.teamsync.data.model.MemberRole
 import com.example.teamsync.data.repository.EventRepository
 import com.example.teamsync.data.repository.GroupRepository
 import com.example.teamsync.ui.FeedFilter
@@ -62,6 +68,8 @@ import com.example.teamsync.ui.GroupDetailUiState
 import com.example.teamsync.ui.GroupDetailViewModel
 import com.example.teamsync.ui.NextEvent
 import com.example.teamsync.ui.components.BottomNavTab
+import com.example.teamsync.ui.components.CenteredBox
+import com.example.teamsync.ui.components.MemberAvatar
 import com.example.teamsync.ui.components.TeamSyncBottomNav
 import com.example.teamsync.ui.components.TeamSyncHeader
 import com.example.teamsync.ui.theme.TeamSyncTheme
@@ -108,6 +116,11 @@ fun GroupDetailScreen(
         }
     }
 
+    // The user left or deleted the group: there is nothing left to show here
+    LaunchedEffect(uiState.exited) {
+        if (uiState.exited) onBack()
+    }
+
     GroupDetailContent(
         uiState = uiState,
         onBack = onBack,
@@ -115,9 +128,14 @@ fun GroupDetailScreen(
         onProposeEvent = onProposeEvent,
         onEventClick = onEventClick,
         onPublishAnnouncement = viewModel::publishAnnouncement,
+        onLeaveGroup = viewModel::leaveGroup,
+        onDeleteGroup = viewModel::deleteGroup,
+        onRemoveMember = viewModel::removeMember,
         onTabClick = onTabClick
     )
 }
+
+enum class GroupDetailTab(val label: String) { FEED("Feed"), INFO("Info") }
 
 @Composable
 fun GroupDetailContent(
@@ -128,9 +146,18 @@ fun GroupDetailContent(
     onPublishAnnouncement: (title: String, text: String, onSuccess: () -> Unit) -> Unit,
     onTabClick: (BottomNavTab) -> Unit,
     modifier: Modifier = Modifier,
-    onEventClick: (eventId: String) -> Unit = {}
+    onEventClick: (eventId: String) -> Unit = {},
+    onLeaveGroup: () -> Unit = {},
+    onDeleteGroup: () -> Unit = {},
+    onRemoveMember: (memberId: String) -> Unit = {},
+    initialTab: GroupDetailTab = GroupDetailTab.FEED
 ) {
+    var selectedTab by rememberSaveable { mutableStateOf(initialTab) }
     var showAnnouncementDialog by rememberSaveable { mutableStateOf(false) }
+    // Leave (member) or delete (admin): each role only has one of them, so one flag is enough
+    var confirmExit by rememberSaveable { mutableStateOf(false) }
+    // uid of the member the admin is about to remove
+    var memberToRemove by rememberSaveable { mutableStateOf<String?>(null) }
 
     if (showAnnouncementDialog) {
         NewAnnouncementDialog(
@@ -139,6 +166,45 @@ fun GroupDetailContent(
             onPublish = { title, text ->
                 onPublishAnnouncement(title, text) { showAnnouncementDialog = false }
             }
+        )
+    }
+
+    // A user removed while the dialog was open has nothing left to leave
+    if (confirmExit && uiState.isMember) {
+        val groupName = uiState.group?.name.orEmpty()
+        ConfirmDestructiveDialog(
+            title = if (uiState.isAdmin) "Delete group?" else "Leave group?",
+            text = if (uiState.isAdmin) {
+                "Everyone will lose access to $groupName, its events and announcements, and its " +
+                    "upcoming events will be removed from their calendars. This can't be undone."
+            } else {
+                "You'll stop seeing $groupName's events and announcements, and its upcoming " +
+                    "events will be removed from your calendar."
+            },
+            confirmLabel = when {
+                !uiState.isLeaving -> if (uiState.isAdmin) "Delete" else "Leave"
+                uiState.isAdmin -> "Deleting…"
+                else -> "Leaving…"
+            },
+            isWorking = uiState.isLeaving,
+            onConfirm = if (uiState.isAdmin) onDeleteGroup else onLeaveGroup,
+            onDismiss = { confirmExit = false }
+        )
+    }
+
+    memberToRemove?.let { uid ->
+        val name = uiState.members.firstOrNull { it.uid == uid }?.displayName ?: "This member"
+        ConfirmDestructiveDialog(
+            title = "Remove member?",
+            text = "$name will lose access to the group, and its upcoming events will be removed " +
+                "from their calendar.",
+            confirmLabel = "Remove",
+            isWorking = false,
+            onConfirm = {
+                onRemoveMember(uid)
+                memberToRemove = null
+            },
+            onDismiss = { memberToRemove = null }
         )
     }
 
@@ -161,50 +227,32 @@ fun GroupDetailContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            !uiState.isMember -> CenteredBox {
+                Text(
+                    text = "You are no longer a member of this group",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             else -> {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(9.dp)
-                ) {
-                    FilterRow(selected = uiState.filter, onSelected = onFilterSelected)
+                GroupTabs(selected = selectedTab, onSelected = { selectedTab = it })
 
-                    if (uiState.showNextEvent) {
-                        SectionLabel("NEXT EVENT")
-                        NextEventCard(uiState.nextEvent!!)
-                    }
+                when (selectedTab) {
+                    GroupDetailTab.FEED -> {
+                        FeedTab(uiState = uiState, onFilterSelected = onFilterSelected, onEventClick = onEventClick)
 
-                    SectionLabel("EARLIER IN THIS GROUP")
-                    if (uiState.visibleFeed.isEmpty()) {
-                        Text(
-                            text = "Nothing here yet",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
-                    } else {
-                        uiState.visibleFeed.forEach { item ->
-                            key(item.id) {
-                                FeedItemCard(
-                                    item = item,
-                                    // Only events have a detail screen
-                                    onClick = if (item.type == FeedItemType.EVENT) {
-                                        { onEventClick(item.id) }
-                                    } else null
-                                )
-                            }
+                        // Only the admin can propose events and post announcements.
+                        if (uiState.isAdmin) {
+                            ActionBar(
+                                onProposeEvent = { onProposeEvent(uiState.group) },
+                                onNewAnnouncement = { showAnnouncementDialog = true }
+                            )
                         }
                     }
-                }
-
-                // Only the admin can propose events and post announcements.
-                if (uiState.isAdmin) {
-                    ActionBar(
-                        onProposeEvent = { onProposeEvent(uiState.group) },
-                        onNewAnnouncement = { showAnnouncementDialog = true }
+                    GroupDetailTab.INFO -> InfoTab(
+                        uiState = uiState,
+                        onRemoveMember = { memberToRemove = it },
+                        onExit = { confirmExit = true }
                     )
                 }
             }
@@ -218,14 +266,231 @@ fun GroupDetailContent(
     }
 }
 
+
 @Composable
-private fun ColumnScope.CenteredBox(content: @Composable () -> Unit) {
-    Box(
+private fun GroupTabs(selected: GroupDetailTab, onSelected: (GroupDetailTab) -> Unit) {
+    PrimaryTabRow(
+        selectedTabIndex = selected.ordinal,
+        containerColor = MaterialTheme.colorScheme.background
+    ) {
+        GroupDetailTab.entries.forEach { tab ->
+            Tab(
+                selected = tab == selected,
+                onClick = { onSelected(tab) },
+                text = {
+                    Text(
+                        text = tab.label,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
+                selectedContentColor = MaterialTheme.colorScheme.primary,
+                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+// Upcoming event, events and announcements
+@Composable
+private fun ColumnScope.FeedTab(
+    uiState: GroupDetailUiState,
+    onFilterSelected: (FeedFilter) -> Unit,
+    onEventClick: (eventId: String) -> Unit
+) {
+    Column(
         modifier = Modifier
             .weight(1f)
-            .fillMaxWidth(),
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
+    ) {
+        FilterRow(selected = uiState.filter, onSelected = onFilterSelected)
+
+        if (uiState.showNextEvent) {
+            SectionLabel("NEXT EVENT")
+            NextEventCard(uiState.nextEvent!!)
+        }
+
+        SectionLabel("EARLIER IN THIS GROUP")
+        if (uiState.visibleFeed.isEmpty()) {
+            CenteredBox{ Text("Nothing here yet") }
+        } else {
+            uiState.visibleFeed.forEach { item ->
+                key(item.id) {
+                    FeedItemCard(
+                        item = item,
+                        // Only events have a detail screen
+                        onClick = if (item.type == FeedItemType.EVENT) {
+                            { onEventClick(item.id) }
+                        } else null
+                    )
+                }
+            }
+        }
+    }
+}
+
+// Description, members and the way out of the group
+@Composable
+private fun ColumnScope.InfoTab(
+    uiState: GroupDetailUiState,
+    onRemoveMember: (memberId: String) -> Unit,
+    onExit: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
+    ) {
+        SectionLabel("ABOUT")
+        InfoCard {
+            val description = uiState.group?.description?.takeIf { it.isNotBlank() }
+            Text(
+                text = description ?: "No description",
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                color = if (description != null) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+            )
+        }
+
+        SectionLabel("JOIN CODE")
+        InfoCard {
+            val joinCode = uiState.group?.invitationCode
+            Text(
+                text = joinCode ?: "No code",
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                color = if (joinCode != null) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+            )
+        }
+
+        SectionLabel("MEMBERS · ${uiState.members.size}")
+        if (uiState.members.isEmpty()) {
+            EmptyText("No members to show")
+        } else {
+            InfoCard {
+                Column(modifier = Modifier.padding(horizontal = 14.dp)) {
+                    uiState.members.forEachIndexed { index, member ->
+                        key(member.uid) {
+                            if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            val isYou = member.uid == uiState.currentUserId
+                            MemberItem(
+                                member = member,
+                                isYou = isYou,
+                                // Only the admin removes members, and never themselves
+                                onRemove = if (uiState.isAdmin && !isYou) {
+                                    { onRemoveMember(member.uid) }
+                                } else null
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        ExitButton(
+            label = if (uiState.isAdmin) "Delete group" else "Leave group",
+            onClick = onExit
+        )
+    }
+}
+
+@Composable
+private fun InfoCard(content: @Composable () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth(),
+        content = content
+    )
+}
+
+@Composable
+private fun MemberItem(member: Member, isYou: Boolean, onRemove: (() -> Unit)?) {
+    val name = member.displayName ?: "Unknown member"
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        MemberAvatar(uid = member.uid, name = name, photoUrl = member.photoUrl)
+        Text(
+            text = if (isYou) "$name (You)" else name,
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        if (member.isAdmin) {
+            Text(
+                text = "ADMIN",
+                fontSize = 10.sp,
+                lineHeight = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+        onRemove?.let {
+            TextButton(
+                onClick = it,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            ) {
+                Text(text = "Remove", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+// Leave (member) or delete (admin); the confirmation dialog comes first
+@Composable
+private fun ExitButton(label: String, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(13.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 14.dp)
+            .clip(shape)
+            .border(1.5.dp, MaterialTheme.colorScheme.error, shape)
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp),
         contentAlignment = Alignment.Center
-    ) { content() }
+    ) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.error
+        )
+    }
+}
+
+@Composable
+private fun EmptyText(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(vertical = 8.dp)
+    )
 }
 
 @Composable
@@ -481,6 +746,33 @@ private fun NewAnnouncementDialog(
 }
 
 @Composable
+private fun ConfirmDestructiveDialog(
+    title: String,
+    text: String,
+    confirmLabel: String,
+    isWorking: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        // Can't be dismissed while the action is running
+        onDismissRequest = { if (!isWorking) onDismiss() },
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                enabled = !isWorking,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            ) { Text(confirmLabel) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isWorking) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
 private fun ActionBar(onProposeEvent: () -> Unit, onNewAnnouncement: () -> Unit) {
     Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -555,6 +847,32 @@ private fun GroupDetailContentPreview() {
             onProposeEvent = {},
             onPublishAnnouncement = { _, _, _ -> },
             onTabClick = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun GroupDetailInfoPreview() {
+    TeamSyncTheme {
+        GroupDetailContent(
+            uiState = GroupDetailUiState(
+                isLoading = false,
+                group = previewGroup.copy(description = "Final project for Software Engineering II"),
+                isAdmin = true,
+                currentUserId = "me",
+                members = listOf(
+                    Member("me", MemberRole.ADMIN, "Mariana Robles", joinedAt = java.time.Instant.EPOCH),
+                    Member("a", MemberRole.MEMBER, "Anthony James", joinedAt = java.time.Instant.EPOCH),
+                    Member("b", MemberRole.MEMBER, "Diego Fuentes", joinedAt = java.time.Instant.EPOCH)
+                )
+            ),
+            onBack = {},
+            onFilterSelected = {},
+            onProposeEvent = {},
+            onPublishAnnouncement = { _, _, _ -> },
+            onTabClick = {},
+            initialTab = GroupDetailTab.INFO
         )
     }
 }

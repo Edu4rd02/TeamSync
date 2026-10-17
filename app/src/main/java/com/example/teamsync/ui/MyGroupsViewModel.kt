@@ -5,8 +5,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.teamsync.data.CalendarDataSource
 import com.example.teamsync.data.CalendarSync
+import com.example.teamsync.data.CalendarWriter
+import com.example.teamsync.data.EventCalendarSync
 import com.example.teamsync.data.model.Group
 import com.example.teamsync.data.repository.AuthRepository
+import com.example.teamsync.data.repository.EventRepository
 import com.example.teamsync.data.repository.GroupRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +37,10 @@ class MyGroupsViewModel @JvmOverloads constructor(
     private val calendarSync: CalendarSync = CalendarSync(
         groupRepository,
         CalendarDataSource(application)
+    ),
+    private val eventCalendarSync: EventCalendarSync = EventCalendarSync(
+        EventRepository(),
+        CalendarWriter(application)
     )
 ) : AndroidViewModel(application) {
 
@@ -57,6 +64,11 @@ class MyGroupsViewModel @JvmOverloads constructor(
                             )
                         }
                     }
+            }
+
+            viewModelScope.launch {
+                groupRepository.getMyGroupIds(userId)
+                    ?.let { eventCalendarSync.removeOrphansEvents(it) }
             }
         }
     }

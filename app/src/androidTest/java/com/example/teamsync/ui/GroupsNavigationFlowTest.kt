@@ -79,6 +79,7 @@ class GroupsNavigationFlowTest {
         }
         groupRepo = mockk {
             every { getMyGroups("user1") } returns db
+            coEvery { getMyGroupIds(any()) } returns null
             coEvery { createGroup(any(), any(), any(), any(), any(), any(), any(), any()) } coAnswers {
                 db.value = db.value + group("new", arg(0), "user1")
             }
@@ -88,7 +89,7 @@ class GroupsNavigationFlowTest {
             }
         }
         val app = ApplicationProvider.getApplicationContext<Application>()
-        myGroupsVm = MyGroupsViewModel(app, groupRepo, authRepo, mockk<CalendarSync>(relaxed = true))
+        myGroupsVm = MyGroupsViewModel(app, groupRepo, authRepo, mockk<CalendarSync>(relaxed = true), mockk(relaxed = true))
         createGroupVm = CreateGroupViewModel(groupRepo, authRepo)
     }
 

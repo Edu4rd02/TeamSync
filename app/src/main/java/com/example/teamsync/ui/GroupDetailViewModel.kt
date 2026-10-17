@@ -9,10 +9,12 @@ import android.util.Log
 import com.example.teamsync.data.model.Announcement
 import com.example.teamsync.data.model.Event
 import com.example.teamsync.data.model.Group
+import com.example.teamsync.data.model.Member
 import com.example.teamsync.data.repository.AnnouncementsRepository
 import com.example.teamsync.data.repository.AuthRepository
 import com.example.teamsync.data.repository.EventRepository
 import com.example.teamsync.data.repository.GroupRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,10 +57,19 @@ data class GroupDetailUiState(
     val announcements: List<Announcement> = emptyList(),
     val isPublishing: Boolean = false,
     val isAdmin: Boolean = false,
+    // False once the admin removed the user while they're looking at the group.
+    val isMember: Boolean = true,
     val photoUrl: String? = null,
     val filter: FeedFilter = FeedFilter.ALL,
     val nextEvent: NextEvent? = null,
-    val feed: List<FeedItem> = emptyList()
+    val feed: List<FeedItem> = emptyList(),
+    val currentUserId: String? = null,
+    // Admin first, then by name
+    val members: List<Member> = emptyList(),
+    // Leaving or deleting the group is in progress
+    val isLeaving: Boolean = false,
+    // One-shot: the screen closes once the user left or deleted the group
+    val exited: Boolean = false
 ) {
     val visibleFeed: List<FeedItem>
         get() = when (filter) {
@@ -83,7 +94,9 @@ class GroupDetailViewModel(
 
     private val groupId: String = checkNotNull(savedStateHandle["groupId"])
 
-    private val _uiState = MutableStateFlow(GroupDetailUiState(photoUrl = authRepository.photoUrl))
+    private val _uiState = MutableStateFlow(
+        GroupDetailUiState(photoUrl = authRepository.photoUrl, currentUserId = authRepository.userId)
+    )
     val uiState: StateFlow<GroupDetailUiState> = _uiState.asStateFlow()
 
     init {
@@ -91,11 +104,33 @@ class GroupDetailViewModel(
             groupRepository.getGroup(groupId)
                 .catch { _uiState.update { state -> state.copy(isLoading = false) } }
                 .collect { group ->
+                    val wasMember = _uiState.value.isMember
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             group = group,
-                            isAdmin = group?.isOwnedBy(authRepository.userId) == true
+                            isAdmin = group?.isOwnedBy(authRepository.userId) == true,
+                            isMember = group == null || it.isLeaving ||
+                                authRepository.userId in group.memberIds
+                        )
+                    }
+                    if (wasMember && !_uiState.value.isMember) {
+                        eventCalendarSync.removeGroup(groupId)
+                    }
+                }
+        }
+
+        viewModelScope.launch {
+            groupRepository.getMembers(groupId)
+                // Without the list the rest of the screen keeps working
+                .catch { }
+                .collect { members ->
+                    _uiState.update {
+                        it.copy(
+                            members = members.sortedWith(
+                                compareByDescending<Member> { member -> member.isAdmin }
+                                    .thenBy { member -> member.displayName.orEmpty().lowercase() }
+                            )
                         )
                     }
                 }
@@ -168,10 +203,61 @@ class GroupDetailViewModel(
                 announcementsRepository.createAnnouncement(groupId, title.trim(), text.trim())
                 onSuccess()
             } catch (e: Exception) {
-                Log.e("GroupDetailViewModel", "Could not publish announcement", e)
+                Log.e(TAG, "Could not publish announcement", e)
             } finally {
                 _uiState.update { it.copy(isPublishing = false) }
             }
         }
+    }
+
+    fun leaveGroup() {
+        // The admin deletes the group instead, and a removed user is already out
+        if (_uiState.value.isAdmin || !_uiState.value.isMember) return
+        exitGroup { userId -> groupRepository.removeMember(groupId, userId) }
+    }
+
+    fun deleteGroup() {
+        if (!_uiState.value.isAdmin) return
+        exitGroup { groupRepository.deleteGroup(groupId) }
+    }
+
+    // Leaving and deleting end the same way: the group's events leave this device's calendar
+    // right away (without waiting for the push) and the screen closes.
+    // Firestore goes first so a failed write never leaves the user half out of the group.
+    private fun exitGroup(action: suspend (userId: String) -> Unit) {
+        val userId = authRepository.userId ?: return
+        if (_uiState.value.isLeaving) return
+        _uiState.update { it.copy(isLeaving = true) }
+        viewModelScope.launch {
+            try {
+                action(userId)
+                eventCalendarSync.removeGroup(groupId)
+                _uiState.update { it.copy(exited = true) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not leave group $groupId", e)
+            } finally {
+                _uiState.update { it.copy(isLeaving = false) }
+            }
+        }
+    }
+
+    // The removed member's devices clean their calendar through the push; the admin's stays as is.
+    fun removeMember(memberId: String) {
+        if (!_uiState.value.isAdmin || memberId == authRepository.userId) return
+        viewModelScope.launch {
+            try {
+                groupRepository.removeMember(groupId, memberId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not remove member $memberId", e)
+            }
+        }
+    }
+
+    private companion object {
+        const val TAG = "GroupDetailViewModel"
     }
 }

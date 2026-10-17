@@ -72,6 +72,7 @@ class CreateEventIntegrationTest {
         coEvery { getGroupOnce("g1") } returns testGroup(id = "g1")
         coEvery { freeBlocks(any(), any(), any(), any(), any()) } returns availability
         every { getGroup("g1") } returns MutableStateFlow(testGroup(id = "g1"))
+        every { getMembers("g1") } returns MutableStateFlow(emptyList())
     }
 
     private val eventRepo = mockk<EventRepository> {

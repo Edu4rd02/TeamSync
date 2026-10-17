@@ -7,6 +7,8 @@ import com.example.teamsync.data.EventCalendarSync
 import com.example.teamsync.data.model.Announcement
 import com.example.teamsync.data.model.Event
 import com.example.teamsync.data.model.Group
+import com.example.teamsync.data.model.Member
+import com.example.teamsync.data.model.MemberRole
 import com.example.teamsync.data.repository.AnnouncementsRepository
 import com.example.teamsync.data.repository.AuthRepository
 import com.example.teamsync.data.repository.EventRepository
@@ -16,7 +18,9 @@ import com.example.teamsync.ui.FeedItemType
 import com.example.teamsync.ui.GroupDetailViewModel
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.Runs
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +43,7 @@ class GroupDetailIntegrationTest {
     private val groupFlow = MutableStateFlow<Group?>(testGroup(id = "g1", ownerId = "user1"))
     private val eventsFlow = MutableStateFlow(emptyList<Event>())
     private val announcementsFlow = MutableStateFlow(emptyList<Announcement>())
+    private val membersFlow = MutableStateFlow(emptyList<Member>())
 
     private val currentUser = mockk<AuthRepository> {
         every { userId } returns "user1"
@@ -47,6 +52,9 @@ class GroupDetailIntegrationTest {
 
     private val groupRepo = mockk<GroupRepository> {
         every { getGroup("g1") } returns groupFlow
+        every { getMembers("g1") } returns membersFlow
+        coEvery { removeMember(any(), any()) } just Runs
+        coEvery { deleteGroup(any()) } just Runs
     }
     private val eventRepo = mockk<EventRepository> {
         every { getEvents("g1") } returns eventsFlow
@@ -63,6 +71,7 @@ class GroupDetailIntegrationTest {
         }
     }
     private val calendarSync = mockk<CalendarSync>(relaxed = true)
+    private val eventCalendarSync = mockk<EventCalendarSync>(relaxed = true)
 
     private fun viewModel() = GroupDetailViewModel(
         savedStateHandle = SavedStateHandle(mapOf("groupId" to "g1")),
@@ -71,8 +80,11 @@ class GroupDetailIntegrationTest {
         eventRepository = eventRepo,
         announcementsRepository = announcementsRepo,
         authRepository = currentUser,
-        eventCalendarSync = mockk<EventCalendarSync>(relaxed = true)
+        eventCalendarSync = eventCalendarSync
     )
+
+    private fun member(uid: String, name: String, role: MemberRole = MemberRole.MEMBER) =
+        Member(uid = uid, role = role, displayName = name, joinedAt = Instant.EPOCH)
 
     //** Data from the repositories reaches the UI state
 
@@ -220,5 +232,87 @@ class GroupDetailIntegrationTest {
         assertFalse(succeeded)
         assertFalse(vm.uiState.value.isPublishing)
         assertTrue(vm.uiState.value.feed.isEmpty())
+    }
+
+    //** Members, leaving and deleting
+
+    @Test
+    fun `members are listed admin first and then by name`() {
+        membersFlow.value = listOf(
+            member("u3", "luis"),
+            member("user1", "Zoe", MemberRole.ADMIN),
+            member("u2", "Ana")
+        )
+
+        assertEquals(listOf("user1", "u2", "u3"), viewModel().uiState.value.members.map { it.uid })
+    }
+
+    @Test
+    fun `a member leaving is removed, their calendar is cleaned and the screen closes`() = runTest {
+        every { currentUser.userId } returns "someone-else"
+        val vm = viewModel()
+
+        vm.leaveGroup()
+
+        coVerify(exactly = 1) { groupRepo.removeMember("g1", "someone-else") }
+        coVerify(exactly = 1) { eventCalendarSync.removeGroup("g1") }
+        assertTrue(vm.uiState.value.exited)
+        assertFalse(vm.uiState.value.isLeaving)
+    }
+
+    @Test
+    fun `a failed leave keeps the calendar and the screen as they were`() = runTest {
+        every { currentUser.userId } returns "someone-else"
+        coEvery { groupRepo.removeMember(any(), any()) } throws RuntimeException("offline")
+        val vm = viewModel()
+
+        vm.leaveGroup()
+
+        coVerify(exactly = 0) { eventCalendarSync.removeGroup(any()) }
+        assertFalse(vm.uiState.value.exited)
+        assertFalse(vm.uiState.value.isLeaving)
+    }
+
+    @Test
+    fun `the admin deletes the group instead of leaving it`() = runTest {
+        val vm = viewModel()
+
+        vm.leaveGroup()
+        coVerify(exactly = 0) { groupRepo.removeMember(any(), any()) }
+
+        vm.deleteGroup()
+        coVerify(exactly = 1) { groupRepo.deleteGroup("g1") }
+        coVerify(exactly = 1) { eventCalendarSync.removeGroup("g1") }
+        assertTrue(vm.uiState.value.exited)
+    }
+
+    @Test
+    fun `a member can not delete the group`() = runTest {
+        every { currentUser.userId } returns "someone-else"
+
+        viewModel().deleteGroup()
+
+        coVerify(exactly = 0) { groupRepo.deleteGroup(any()) }
+    }
+
+    @Test
+    fun `removing a member leaves the admin's own calendar untouched`() = runTest {
+        val vm = viewModel()
+
+        vm.removeMember("u2")
+
+        coVerify(exactly = 1) { groupRepo.removeMember("g1", "u2") }
+        coVerify(exactly = 0) { eventCalendarSync.removeGroup(any()) }
+        assertFalse(vm.uiState.value.exited)
+    }
+
+    @Test
+    fun `only the admin removes members and never themselves`() = runTest {
+        viewModel().removeMember("user1")
+
+        every { currentUser.userId } returns "someone-else"
+        viewModel().removeMember("u2")
+
+        coVerify(exactly = 0) { groupRepo.removeMember(any(), any()) }
     }
 }

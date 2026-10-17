@@ -106,6 +106,45 @@ class EventCalendarSync(
         }
     }
 
+    // Function to delete all the events from a group
+    suspend fun removeGroup(groupId: String): Int {
+        if (!calendar.hasPermission()) return 0
+        return try {
+            mutex.withLock {
+                io {
+                    // Get all the events created for this group and delete them
+                    calendar.entryIds(groupUriPrefix(groupId), Instant.now().toEpochMilli())
+                        .count{ (id, _) -> calendar.delete(id)}
+                }
+            }
+        } catch (e: CancellationException){
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Error removing calendar entries of group $groupId",e)
+            0
+        }
+    }
+
+    suspend fun removeOrphansEvents(activeGroupIds: Set<String>){
+        if (!calendar.hasPermission()) return
+        try {
+            mutex.withLock {
+                io {
+                    // Get all events from device's calendar
+                    calendar.entryIds(null, Instant.now().toEpochMilli())
+                        // Based on the uri, get the id and check if it's in the active groups list
+                        // If it's not, delete the event
+                        .filter { (_,uri) -> groupIdOf(uri)?.let { it !in activeGroupIds} == true }
+                        .forEach { (id, _) -> calendar.delete(id) }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Error removing orphan events", e)
+        }
+    }
+
     // True if the user has something else in their calendar during the event.
     suspend fun hasConflict(groupId: String, event: Event): Boolean {
         if (!calendar.hasPermission()) return false
@@ -129,7 +168,14 @@ class EventCalendarSync(
 
     companion object {
         private const val TAG = "EventCalendarSync"
+        private const val URI_ROOT = "teamsync://groups/"
+        fun groupUriPrefix(groupId: String) = "$URI_ROOT$groupId/"
+        fun entryUri(groupId: String, eventId: String) = "${groupUriPrefix(groupId)}events/$eventId"
+        fun groupIdOf (uri: String): String? =
+            uri.takeIf { it.startsWith(URI_ROOT) }
+                ?.removePrefix(URI_ROOT)
+                ?.substringBefore('/')
+                ?.ifEmpty { null }
 
-        fun entryUri(groupId: String, eventId: String) = "teamsync://groups/$groupId/events/$eventId"
     }
 }

@@ -46,6 +46,7 @@ import com.example.teamsync.ui.components.TeamSyncBottomNav
 import com.example.teamsync.ui.components.TeamSyncHeader
 import com.example.teamsync.ui.MyGroupsUiState
 import com.example.teamsync.ui.MyGroupsViewModel
+import com.example.teamsync.ui.components.CenteredBox
 import com.example.teamsync.ui.theme.TeamSyncTheme
 import java.time.DayOfWeek
 import java.time.Instant
@@ -171,9 +172,20 @@ fun MyGroupsContent(
     ) {
         TeamSyncHeader(title = "My Groups")
 
+        if (!uiState.isLoading) {
+            JoinWithCodeButton(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                onClick = { showJoinGroupDialog = true }
+            )
+        }
+
         if (uiState.isLoading) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+            CenteredBox { CircularProgressIndicator() }
+        } else if (uiState.groups.isEmpty()) {
+            CenteredBox {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("You are not in any group yet")
+                }
             }
         } else {
             LazyColumn(
@@ -181,9 +193,6 @@ fun MyGroupsContent(
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                item {
-                    JoinWithCodeButton(onClick = { showJoinGroupDialog = true })
-                }
                 items(uiState.groups, key = { it.id }) { group ->
                     GroupCard(
                         group = group,
@@ -203,13 +212,16 @@ fun MyGroupsContent(
 }
 
 @Composable
-private fun JoinWithCodeButton(onClick: () -> Unit) {
+private fun JoinWithCodeButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
     ) {
         Box(
             modifier = Modifier.padding(vertical = 14.dp),
