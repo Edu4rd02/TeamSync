@@ -1,11 +1,7 @@
 package com.example.teamsync.ui.screens
 
-import android.Manifest
-import android.content.Context
-import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -41,25 +37,18 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.teamsync.data.model.Group
+import com.example.teamsync.ui.CALENDAR_PERMISSIONS
 import com.example.teamsync.ui.components.BottomNavTab
 import com.example.teamsync.ui.components.TeamSyncBottomNav
 import com.example.teamsync.ui.components.TeamSyncHeader
 import com.example.teamsync.ui.MyGroupsUiState
 import com.example.teamsync.ui.MyGroupsViewModel
 import com.example.teamsync.ui.components.CenteredBox
+import com.example.teamsync.ui.hasCalendarPermission
 import com.example.teamsync.ui.theme.TeamSyncTheme
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalTime
-
-private val CALENDAR_PERMISSIONS = arrayOf(
-    Manifest.permission.READ_CALENDAR,
-    Manifest.permission.WRITE_CALENDAR
-)
-
-private fun hasCalendarPermission(context: Context) = CALENDAR_PERMISSIONS.all {
-    ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-}
 
 @Composable
 fun MyGroupsScreen(

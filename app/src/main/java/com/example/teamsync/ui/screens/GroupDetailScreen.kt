@@ -1,6 +1,7 @@
 package com.example.teamsync.ui.screens
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -41,11 +42,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -61,6 +64,7 @@ import com.example.teamsync.data.model.Member
 import com.example.teamsync.data.model.MemberRole
 import com.example.teamsync.data.repository.EventRepository
 import com.example.teamsync.data.repository.GroupRepository
+import com.example.teamsync.ui.CALENDAR_PERMISSIONS
 import com.example.teamsync.ui.FeedFilter
 import com.example.teamsync.ui.FeedItem
 import com.example.teamsync.ui.FeedItemType
@@ -105,15 +109,21 @@ fun GroupDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
 
-    val notificationLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
     ) { }
 
     LaunchedEffect(Unit){
-        if (Build.VERSION.SDK_INT >= 33){
-            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        val missing = buildList {
+            addAll(CALENDAR_PERMISSIONS)
+            if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+        }.filter {
+            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
         }
+        if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
     }
 
     // The user left or deleted the group: there is nothing left to show here
