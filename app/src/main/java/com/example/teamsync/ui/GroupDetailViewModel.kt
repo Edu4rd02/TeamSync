@@ -109,7 +109,7 @@ class GroupDetailViewModel(
                         it.copy(
                             isLoading = false,
                             group = group,
-                            isAdmin = group?.isOwnedBy(authRepository.userId) == true,
+                            isAdmin = if (group == null)  it.isAdmin else group.isOwnedBy(authRepository.userId) == true,
                             isMember = group == null || it.isLeaving ||
                                 authRepository.userId in group.memberIds
                         )
