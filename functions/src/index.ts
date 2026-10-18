@@ -32,7 +32,8 @@ const DEAD_TOKEN_CODES = new Set([
  */
 async function notifyGroupMembers(
   groupId: string,
-  buildMessage: (groupName: string) => { title: string; body: string }
+  buildMessage: (groupName: string) => { title: string; body: string },
+  extraData: Record<string, string> = {}
 ) {
   // Fetch the group document
   const db = getFirestore();
@@ -48,7 +49,7 @@ async function notifyGroupMembers(
     "Your group";
 
   // Data-only: the app's onMessageReceived builds the notification.
-  await sendToUsers(recipients, { ...buildMessage(groupName), groupId });
+  await sendToUsers(recipients, { ...buildMessage(groupName), groupId, ...extraData });
 }
 
 /**
@@ -109,8 +110,8 @@ export const onEventCreated = onDocumentCreated(
     region: "us-west2",
   },
   async (event) => {
-    // Contains path parameters (groupId, eventId)
-    const { groupId } = event.params;
+    // Contains path parameters
+    const { groupId, eventId } = event.params;
 
     // Contains the info about the new event
     const eventData = event.data?.data();
@@ -119,8 +120,9 @@ export const onEventCreated = onDocumentCreated(
     const eventTitle = (eventData[EVENT_TITLE] as string | undefined) ?? "";
     await notifyGroupMembers(groupId, (groupName) => ({
       title: `New event in ${groupName}`,
-      body: eventTitle,
-    }));
+      body: eventTitle
+    }),
+      { eventId });
   }
 );
 

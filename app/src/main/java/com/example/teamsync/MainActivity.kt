@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
             .createNotificationChannel(channel)
         // Set when the app was opened by tapping an announcement notification.
         val notificationGroupId = intent.getStringExtra("groupId")
+        val notificationEventId = intent.getStringExtra("eventId")
         setContent {
             val navController = rememberNavController()
             TeamSyncTheme {
@@ -34,7 +35,8 @@ class MainActivity : ComponentActivity() {
                 ) {
                     TeamSyncNavGraph(
                         navController = navController,
-                        initialGroupId = notificationGroupId
+                        initialGroupId = notificationGroupId,
+                        initialEventId = notificationEventId
                     )
                 }
             }

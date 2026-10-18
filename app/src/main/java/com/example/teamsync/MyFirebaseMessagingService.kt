@@ -57,10 +57,12 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         val title = data["title"] ?: return
         val body = data["body"] ?: ""
         val groupId = data["groupId"]
+        val eventId = data["eventId"]
 
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("groupId", groupId)
+            putExtra("eventId", eventId)
         }
         val pending = PendingIntent.getActivity(
             this, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
