@@ -314,7 +314,6 @@ class CreateEventViewModel(
                         confirmedIds = confirmedIds
                     )
                 }
-                _uiState.update { it.copy(isSaving = false) }
                 onSuccess()
             } catch (e: CancellationException) {
                 throw e

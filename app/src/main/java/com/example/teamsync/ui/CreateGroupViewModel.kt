@@ -75,7 +75,7 @@ class CreateGroupViewModel(
                         workEnd = state.workEnd
                     )
                 }
-                _uiState.update { it.copy(isCreating = false, isCreated = true) }
+                _uiState.update { it.copy(isCreated = true) }
             } catch (e: TimeoutCancellationException) {
                 _uiState.update { it.copy(isCreating = false, error = CREATE_ERROR) }
             } catch (e: CancellationException) {
