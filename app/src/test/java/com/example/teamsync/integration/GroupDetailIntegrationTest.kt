@@ -250,6 +250,7 @@ class GroupDetailIntegrationTest {
     @Test
     fun `a member leaving is removed, their calendar is cleaned and the screen closes`() = runTest {
         every { currentUser.userId } returns "someone-else"
+        groupFlow.value = testGroup(id = "g1", ownerId = "user1", memberIds = listOf("user1", "someone-else"))
         val vm = viewModel()
 
         vm.leaveGroup()
@@ -263,6 +264,7 @@ class GroupDetailIntegrationTest {
     @Test
     fun `a failed leave keeps the calendar and the screen as they were`() = runTest {
         every { currentUser.userId } returns "someone-else"
+        groupFlow.value = testGroup(id = "g1", ownerId = "user1", memberIds = listOf("user1", "someone-else"))
         coEvery { groupRepo.removeMember(any(), any()) } throws RuntimeException("offline")
         val vm = viewModel()
 

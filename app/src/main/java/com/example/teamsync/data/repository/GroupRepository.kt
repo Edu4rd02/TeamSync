@@ -285,7 +285,8 @@ class GroupRepository(
         range: Pair<LocalDate, LocalDate>,
         duration: Duration,
         zone: ZoneId = ZoneId.systemDefault(),
-        preferredHours: ClosedRange<LocalTime>? = null
+        preferredHours: ClosedRange<LocalTime>? = null,
+        blocked: List<TimeSlot> = emptyList()
     ): FreeBlocksResult {
         val group = getGroupOnce(groupId) ?: return FreeBlocksResult(emptyList(), 0, 0)
 
@@ -320,7 +321,8 @@ class GroupRepository(
             range = range,
             durationMs = duration.toMillis(),
             zone = zone,
-            preferredHours = preferredHours
+            preferredHours = preferredHours,
+            blocked = blocked
         )
         return FreeBlocksResult(
             options = options,

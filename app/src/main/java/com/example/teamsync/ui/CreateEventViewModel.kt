@@ -233,7 +233,8 @@ class CreateEventViewModel(
                     range = state.rangeStart to state.rangeEnd,
                     duration = state.duration,
                     zone = zone,
-                    preferredHours = state.preferredHours
+                    preferredHours = state.preferredHours,
+                    blocked = groupEventSlots()
                 )
                 busyByUser = result.busyByUser
                 _uiState.update {
@@ -250,6 +251,14 @@ class CreateEventViewModel(
                 _uiState.update { it.copy(days = emptyList(), isLoading = false, loadFailed = true) }
             }
         }
+    }
+
+    // Time taken by the group's upcoming events. The event being edited doesn't block itself,
+    private suspend fun groupEventSlots(): List<TimeSlot> {
+        val now = Instant.now()
+        return eventRepository.getEventsOnce(groupId)
+            .filter { !it.isCancelled && it.id != eventId && it.endAt > now }
+            .map { TimeSlot(it.startAt.toEpochMilli(), it.endAt.toEpochMilli()) }
     }
 
     fun onBlockSelected(date: LocalDate, block: FreeBlock) = _uiState.update {

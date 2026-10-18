@@ -70,13 +70,14 @@ class CreateEventIntegrationTest {
 
     private val groupRepo = mockk<GroupRepository> {
         coEvery { getGroupOnce("g1") } returns testGroup(id = "g1")
-        coEvery { freeBlocks(any(), any(), any(), any(), any()) } returns availability
+        coEvery { freeBlocks(any(), any(), any(), any(), any(), any()) } returns availability
         every { getGroup("g1") } returns MutableStateFlow(testGroup(id = "g1"))
         every { getMembers("g1") } returns MutableStateFlow(emptyList())
     }
 
     private val eventRepo = mockk<EventRepository> {
         every { getEvents("g1") } returns eventsDb
+        coEvery { getEventsOnce("g1") } coAnswers { eventsDb.value }
         coEvery { createEvent(any(), any(), any(), any(), any()) } coAnswers {
             val start = Instant.ofEpochSecond(arg<Timestamp>(3).seconds)
             eventsDb.value = eventsDb.value + testEvent(
@@ -118,7 +119,7 @@ class CreateEventIntegrationTest {
 
     @Test
     fun `a failing availability search is reported and leaves no days`() = runTest {
-        coEvery { groupRepo.freeBlocks(any(), any(), any(), any(), any()) } throws RuntimeException("offline")
+        coEvery { groupRepo.freeBlocks(any(), any(), any(), any(), any(), any()) } throws RuntimeException("offline")
         val vm = viewModel()
         advanceUntilIdle()
 
@@ -140,7 +141,7 @@ class CreateEventIntegrationTest {
         advanceUntilIdle()
 
         assertNull(vm.uiState.value.selection)
-        coVerify { groupRepo.freeBlocks("g1", any(), Duration.ofMinutes(30), any(), any()) }
+        coVerify { groupRepo.freeBlocks("g1", any(), Duration.ofMinutes(30), any(), any(), any()) }
     }
 
     //** Save -> repository

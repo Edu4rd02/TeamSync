@@ -33,6 +33,7 @@ fun findFreeBlocks(
     durationMs: Long,
     zone: ZoneId,
     preferredHours: ClosedRange<LocalTime>? = null,
+    blocked: List<TimeSlot> = emptyList(),
     now: Long = System.currentTimeMillis()
 ): List<MeetingOption> {
 
@@ -71,11 +72,16 @@ fun findFreeBlocks(
             blocks.filter { it.start < end && it.end > start }
         }
 
+        // Filter the blocked time slots that overlap with this day's window
+        val eventBlock = blocked.filter { it.start < end && it.end > start }
+
         var s = start
         while (s + durationMs <= end) {
             val e = s + durationMs
-            val (free, busy) = dayBusy.keys.partition { id -> isFree(dayBusy[id].orEmpty(), s, e) }
-            if (free.isNotEmpty()) options += MeetingOption(TimeSlot(s, e), free, busy)
+            if (isFree(eventBlock, s, e)) {
+                val (free, busy) = dayBusy.keys.partition { id -> isFree(dayBusy[id].orEmpty(), s, e) }
+                if (free.isNotEmpty()) options += MeetingOption(TimeSlot(s, e), free, busy)
+            }
             s += STEP_MS
         }
     }

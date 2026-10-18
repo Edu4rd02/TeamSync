@@ -16,13 +16,17 @@ class CalendarDataSource(private val context: Context) {
             PackageManager.PERMISSION_GRANTED
 
     // One query per window, so nothing outside the given windows is ever requested.
+    // The entries TeamSync wrote for [groupId]'s own events are skipped: those events already
+    // block their time for the whole group.
     // Blocking call: run it off the main thread.
-    fun busyBlocks(windows: List<Pair<Long, Long>>): List<TimeSlot> =
-        windows.flatMap { (from, to) -> query(from, to) }
+    fun busyBlocks(windows: List<Pair<Long, Long>>, groupId: String): List<TimeSlot> {
+        val groupPrefix = EventCalendarSync.groupUriPrefix(groupId)
+        return windows.flatMap { (from, to) -> query(from, to, groupPrefix) }
             .sortedBy { it.start }
             .merge()
+    }
 
-    private fun query(from: Long, to: Long): List<TimeSlot> {
+    private fun query(from: Long, to: Long, groupPrefix: String): List<TimeSlot> {
         // Build the URI to see instances in a determined range of time
         val uri = CalendarContract.Instances.CONTENT_URI.buildUpon()
             .also {
@@ -34,7 +38,8 @@ class CalendarDataSource(private val context: Context) {
         val projection = arrayOf(
             CalendarContract.Instances.BEGIN,
             CalendarContract.Instances.END,
-            CalendarContract.Instances.ALL_DAY
+            CalendarContract.Instances.ALL_DAY,
+            CalendarContract.Instances.CUSTOM_APP_URI
         )
         val slots = mutableListOf<TimeSlot>()
 
@@ -45,6 +50,8 @@ class CalendarDataSource(private val context: Context) {
                 // The third column (0,1,2) is for ALL_DAY events, if is 1 is an all day event
                 // All-day events are reported in UTC and would be shifted; ignored for now.
                 if (cursor.getInt(2) == 1) continue
+                // Null for the events not created by an app
+                if (cursor.getString(3)?.startsWith(groupPrefix) == true) continue
 
                 slots += TimeSlot(
                     // Compared the window and the event time, so can cut times

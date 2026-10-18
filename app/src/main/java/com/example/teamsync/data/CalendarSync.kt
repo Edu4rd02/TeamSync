@@ -38,7 +38,7 @@ class CalendarSync(
                 .filter { (_, end) -> end > now }
             if (windows.isEmpty()) return
 
-            val blocks = withContext(Dispatchers.IO) { calendarDataSource.busyBlocks(windows) }
+            val blocks = withContext(Dispatchers.IO) { calendarDataSource.busyBlocks(windows, groupId) }
             groupRepository.syncUserCalendar(
                 userId = userId,
                 groupId = groupId,
